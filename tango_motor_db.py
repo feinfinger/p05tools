@@ -283,16 +283,22 @@ class TangoMotorDb():
                                 h5db_file[path].attrs.create('last edit', str(datetime.now()), dtype="S19")
             h5db_file.close()
 
-    def _retrieve_database_entries(self):
+    def _retrieve_database_entries(self, match=None):
         """
         Fetches a list of all entries in database.
+
+        param: match <str> (optional)
+            Filters list for motorgroup or motorname members
+            default: None
         """
         with h5py.File(self._motor_db_filepath, 'r') as h5db_file:
             db_entries = []
-            for motorgroup in h5db_file.keys():
-                for motorname in h5db_file[motorgroup].keys():
-                    db_entries.append([motorgroup, motorname])
+            for db_motorgroup in h5db_file.keys():
+                for db_motorname in h5db_file[db_motorgroup].keys():
+                    db_entries.append([db_motorgroup, db_motorname])
             h5db_file.close()
+        if match:
+            db_entries = [item for item in db_entries if match in item]
         return db_entries
 
     def query_database(self, motorgroup=None, motorname=None, cache=True, verbose=True):
@@ -306,7 +312,7 @@ class TangoMotorDb():
             default: None
         param: motorname <str> (optional)
             Name of the motor
-            defaul: None
+            default: None
         param: cache <boolean> (optional)
             Whether or not to save database entry to internal cache
             default: True
@@ -353,6 +359,66 @@ class TangoMotorDb():
         if verbose:
             print('=' * 79)
 
+    def check_consistency(self, motorgroup=None, motorname=None, verbose=True):
+        """
+        Checks if database entry match with corresponding tango server entry.
+        Work only on current tango_host.
+
+        param: motorgroup <str> (optional)
+            Name for the group to which the motor belongs to
+            default: None
+        param: motorname <str> (optional)
+            Name of the motor
+            default: None
+        param: verbose <boolean>
+            Print information to console.
+            default: True
+        """
+        if (motorgroup and motorname):
+            db_entries = self._retrieve_database_entries(motorname)
+        if (motorgroup and (motorname is None)):
+            db_entries = self._retrieve_database_entries(motorgroup)
+        if ((motorgroup is None) and (motorname is None)):
+            db_entries = self._retrieve_database_entries()
+        delta = []
+        with h5py.File(self._motor_db_filepath, 'r') as h5db_file:
+            for (db_motorgroup, db_motorname) in db_entries:
+                p1 = db_motorgroup # database directory path 1st level
+                p2 = p1 + '/' + db_motorname # database directory path 2nd level
+                zmx_server_name = h5db_file[p2 + '/loc/zmx_device_name'].value
+                oms_server_name = h5db_file[p2 + '/loc/oms_device_name'].value
+                zmx_server = tango.DeviceProxy(zmx_server_name)
+                oms_server = tango.DeviceProxy(oms_server_name)
+                if self._tango_host not in h5db_file[p2 + '/loc/zmx_device_name'].value:
+                    continue
+                p3 = p2 + '/zmx' # database directory path 3rd level
+                for attr in self._motor_cache['zmx'].keys():
+                    db_value = h5db_file[p3 + '/' + attr].value
+                    tg_value = zmx_server.read_attribute(attr).value
+                    if isinstance(tg_value, float):
+                        tg_value = round(tg_value, 4)
+                    if db_value != tg_value:
+                        delta.append([db_motorgroup, db_motorname, attr, db_value, tg_value])
+                p3 = p2 + '/oms' # database directory path 3rd level
+                for attr in self._motor_cache['oms'].keys():
+                    db_value = h5db_file[p3 + '/' + attr].value
+                    tg_value = oms_server.read_attribute(attr).value
+                    if isinstance(tg_value, float):
+                        tg_value = round(tg_value, 4)
+                    if db_value != tg_value:
+                        delta.append([db_motorgroup, db_motorname, attr, db_value, tg_value])
+            if verbose:
+                if len(delta) == 0:
+                    print('[OK] No differences found.')
+                else:
+                    print('Differences found in:')
+                    print('{:<30}|{:<20}|{:<20}'.format('Axis name', 'Database value', 'Tango value'))
+                    print('-' * 30 + '+' + '-' * 20 + '+' + '-' *20)
+                    for diff in delta:
+                        ax_name = '({}/{}/{})'.format(diff[0], diff[1], diff[2])
+                        print('{:<30}|{:<20}|{:<20}'.format(ax_name, diff[3], diff[4]))
+            h5db_file.close()
 
 if __name__ == '__main__':
     TM = TangoMotorDb()
+    TM.check_consistency('x1x')

@@ -92,7 +92,7 @@ class TangoMotorDb():
         return {'zmx':{'device_name':zmx_device_name, 'device':zmx_device},
                 'oms':{'device_name':oms_device_name, 'device':oms_device}}
 
-    def switch_tango_host(self, tango_host=None):
+    def switch_tango_host(self, tango_host=None, verbose=True):
         """
         Sets new tango host. Checks if the tango host is know to the class.
 
@@ -100,13 +100,17 @@ class TangoMotorDb():
             Name of the new tango host.
             Port must be included, e.g. 'hzgpp05vme0:10000'
             If tango_host is omitted, a list of known tango hosts will be shown.
+        param: verbose <boolean>
+            Print information to console.
+            default: True
         """
         if tango_host:
             if tango_host in self._server_prefixes.keys():
                 self._tango_host = tango_host
-                print('Changed tango host to: {}'.format(tango_host))
+                if verbose:
+                    print('Changed tango host to: {}'.format(tango_host))
             else:
-                print('Tango host {} is not known in class.'.format(tango_host))
+                raise Exception('Error: Host {} not known.'.format(tango_host))
         else:
             print('=' * 79)
             print('Known tango hosts:\n')
@@ -115,7 +119,7 @@ class TangoMotorDb():
             print('=' * 79)
 
 
-    def query_server(self, zmx_slot):
+    def query_server(self, zmx_slot, verbose=True):
         """
         Reads motor attributes fom tango server based on the ZMX slot and
         stroes the values in an internal cache.
@@ -129,6 +133,9 @@ class TangoMotorDb():
             Name for the group to which the motor belongs to
         param: motorname <str>
             Name of the motor
+        param: verbose <boolean>
+            Print information to console.
+            default: True
         """
         tango_proxies = self._fetch_tango_proxies(zmx_slot)
         for servertype, serverentry in tango_proxies.items():
@@ -145,9 +152,10 @@ class TangoMotorDb():
         self._motor_cache['loc']['zmx_device_name'] = tango_proxies['zmx']['device_name']
         self._motor_cache['loc']['oms_device_name'] = tango_proxies['oms']['device_name']
 
-        self.cache_info()
+        if verbose:
+            self.cache_info()
 
-    def modify_cache(self, attribute, value):
+    def modify_cache(self, attribute, value, verbose=True):
         """
         Modifies cached motor values.
 
@@ -155,16 +163,20 @@ class TangoMotorDb():
             attribute to modify
         param: value <all>
             new value for attribute
+        param: verbose <boolean>
+            Print information to console.
+            default: True
         """
         for m_subg in self._motor_subgroups:
             for key in self._motor_cache[m_subg]:
                 if key == attribute:
                     self._motor_cache[m_subg][key] = value
-                    print('Inserted: {} {}'.format(attribute, value))
+                    if verbose:
+                        print('Inserted: {} {}'.format(attribute, value))
                     return
-        print('{} not in cache (typo?)'.format(attribute))
+        raise Exception('{} not in cache (typo?)'.format(attribute))
 
-    def write_cache_to_server(self, zmx_slot, motorgroup, motorname, update=True):
+    def write_cache_to_server(self, zmx_slot, motorgroup, motorname, update=True, verbose=True):
         """
         Write motor attributes from internal cache to ZMX/OMS tango servers.
 
@@ -178,6 +190,9 @@ class TangoMotorDb():
         param: update_db <boolean> (optional)
             whether to update the database and cache automatically or not
             default: True
+        param: verbose <boolean>
+            Print information to console.
+            default: True
         """
         tango_proxies = self._fetch_tango_proxies(zmx_slot)
         for servertype, serverentry in tango_proxies.items():
@@ -187,14 +202,16 @@ class TangoMotorDb():
                 serverentry['device'].write_attribute(attr, value)
             if servertype == 'zmx':
                 serverentry['device'].WriteEPROM()
-                print('Write ZMX attrobutes to EPROM successful.')
+                if verbose:
+                    print('Write ZMX attrobutes to EPROM successful.')
 
         if update:
-            print('Updating cache and database:')
+            if verbose:
+                print('Updating cache and database:')
             self._motor_cache['loc']['zmx_slot'] = zmx_slot
             self._motor_cache['loc']['zmx_device_name'] = tango_proxies['zmx']['device_name']
             self._motor_cache['loc']['oms_device_name'] = tango_proxies['oms']['device_name']
-            self.write_cache_to_database(motorgroup, motorname, overwrite_attrs=False)
+            self.write_cache_to_database(motorgroup, motorname, overwrite_all=False, verbose=verbose)
 
 
     def cache_info(self):
@@ -208,31 +225,26 @@ class TangoMotorDb():
                 print('{:<9}: {:<23}: {}'.format(subgroup, attr, value))
         print('=' * 79)
 
-    def write_cache_to_database(self, motorgroup, motorname, overwrite_attrs=False):
+    def write_cache_to_database(self, motorgroup, motorname, overwrite_all=False, verbose=True):
         """
         Write motor attributes into a h5 database on disk. Default behaviour
         for existing entries is to only overwrite 'loc' entries.
-        Use 'overwrite_attrs' if other parameters should be overwritten as well.
+        Use 'overwrite_all' if other parameters should be overwritten as well.
 
         param: motorgroup <str>
             Name for the group to which the motor belongs to
         param: motorname <str>
             Name of the motor
-        param: overwrite_attrs <boolean> (optional)
-            Overwrites qlso motor attributes if true. Affects ony 'zmx' and 'oms'
+        param: overwrite_all <boolean> (optional)
+            Overwrites also motor attributes if true. Affects ony 'zmx' and 'oms'
             subgroups. The 'loc' entries will always be written.
+        param: verbose <boolean>
+            Print information to console.
+            default: True
         """
         p1 = motorgroup # database directory path 1st level
         p2 = p1 + '/' + motorname # database directory path 2nd level
         with h5py.File(self._motor_db_filepath, 'a') as h5db_file:
-            # test if the motorgroup and motorname exist in cache
-            try:
-                self._motor_cache
-            except KeyError:
-                print('{} {} does not exist in internal \
-                      dictionary.'.format(motorgroup, motorname))
-                self.cache_info()
-                return
             # write attributes to database, iterate over subgroups
             for m_subg in self._motor_subgroups:
                 p3 = p2 + '/' + m_subg # database directory path 3rd level
@@ -248,8 +260,9 @@ class TangoMotorDb():
 
                 # or, if the entry exists:
                 except ValueError:
-                    if overwrite_attrs:
-                        print('Group already exists, Overwriting: {}'.format(p3))
+                    if overwrite_all:
+                        if verbose:
+                            print('Group already exists, Overwriting: {}'.format(p3))
                         for attr, value in self._motor_cache[m_subg].items():
                             del h5db_file[p3 + '/'+attr]
                             h5db_file[p3].create_dataset(attr, data=value)
@@ -257,36 +270,18 @@ class TangoMotorDb():
                             h5db_file[path].attrs.create('last edit', str(datetime.now()), dtype="S19")
                     else:
                         if m_subg != 'loc':
-                            print('Group already exists. No ovwrite_attrs flag  set. Skipping  {}.'.format(m_subg))
+                            if verbose:
+                                print('Group already exists. No ovwrite_attrs flag  set. Skipping  {}.'.format(m_subg))
                             continue
                         else:
-                            print('Group already exists, Overwriting: {}'.format(p3))
+                            if verbose:
+                                print('Group already exists, Overwriting: {}'.format(p3))
                             for attr, value in self._motor_cache['loc'].items():
                                 del h5db_file[p2 + '/loc/'+attr]
                                 h5db_file[p2 + '/loc'].create_dataset(attr, data=value)
                             for path in [p1, p2, p3]: # update timestamps in database
                                 h5db_file[path].attrs.create('last edit', str(datetime.now()), dtype="S19")
             h5db_file.close()
-
-
-    def query_database(self, motorgroup, motorname):
-        """
-        Reads a single motor entry from the database into the internally stored
-        cache.
-
-        param: motorgroup <str>
-            Name for the group to which the motor belongs to
-        param: motorname <str>
-            Name of the motor
-        """
-        with h5py.File(self._motor_db_filepath, 'r') as h5db_file:
-            # create empty motor group entries if necessary
-            for m_subg in self._motor_subgroups:
-                for attr in self._motor_cache[m_subg].keys():
-                    self._motor_cache[m_subg][attr] = \
-                        h5db_file[motorgroup + '/' + motorname + '/'+ m_subg + '/'+attr].value
-            h5db_file.close()
-        self.database_info(motorgroup, motorname)
 
     def _retrieve_database_entries(self):
         """
@@ -300,10 +295,11 @@ class TangoMotorDb():
             h5db_file.close()
         return db_entries
 
-    def database_info(self, motorgroup=None, motorname=None):
+    def query_database(self, motorgroup=None, motorname=None, cache=True, verbose=True):
         """
-        Shows information about h5 database stored motors. If any parameter
-        is omitted, an overview of the database contents will be printed instead.
+        Queries motor attributes from h5 database and optionally stores them to
+        the internal cache. If any parameter is omitted or not in database, an
+        overview of the database contents will be printed instead.
 
         param: motorgroup <str> (optional)
             Name for the group to which the motor belongs to
@@ -311,26 +307,51 @@ class TangoMotorDb():
         param: motorname <str> (optional)
             Name of the motor
             defaul: None
+        param: cache <boolean> (optional)
+            Whether or not to save database entry to internal cache
+            default: True
+        param: verbose <boolean>
+            Print information to console.
+            default: True
         """
-        db_entries = self._retrieve_database_entries()
-        if not (motorgroup and motorname):
+        # Fetch a list of all entries in database.
+        with h5py.File(self._motor_db_filepath, 'r') as h5db_file:
+            db_entries = []
+            for db_motorgroup in h5db_file.keys():
+                for db_motorname in h5db_file[db_motorgroup].keys():
+                    db_entries.append([db_motorgroup, db_motorname])
+            h5db_file.close()
+        #  show list of known motors if motorgroup and motorname is empty or wrong
+        if ([motorgroup, motorname] not in db_entries):
+            if not verbose:
+                return
             print('=' * 79)
+            if (motorgroup and motorname):
+                print('({}, {}) could not be found in database.'.format(motorgroup, motorname))
             print('The database currently contains attributes for these motors:\n')
             for item in db_entries:
                 print('{:<10} {}'.format(item[0], item[1]))
             print('=' * 79)
             return
-        print('=' * 79)
-        print('{} {} attributes\n'.format(motorgroup, motorname))
-
+        # Fetch attributes from database  and optionally write them to cache
+        if verbose:
+            print('=' * 79)
+            print('{} {} attributes\n'.format(motorgroup, motorname))
+        p1 = motorgroup # database directory path 1st level
+        p2 = p1 + '/' + motorname # database directory path 2nd level
         with h5py.File(self._motor_db_filepath, 'r') as h5db_file:
             # create empty motor group entries if necessary
             for m_subg in self._motor_subgroups:
+                p3 = p2 + '/' + m_subg # database directory path 3rd level
                 for attr in self._motor_cache[m_subg].keys():
-                    value = h5db_file[motorgroup + '/' + motorname + '/'+ m_subg + '/'+attr].value
-                    print('{:<9}: {:<23}: {}'.format(m_subg, attr, value))
+                    value = h5db_file[p3 + '/'+attr].value
+                    if verbose:
+                        print('{:<9}: {:<23}: {}'.format(m_subg, attr, value))
+                    if cache:
+                        self._motor_cache[m_subg][attr] = h5db_file[p3 + '/'+attr].value
             h5db_file.close()
-        print('=' * 79)
+        if verbose:
+            print('=' * 79)
 
 
 if __name__ == '__main__':

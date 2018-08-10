@@ -367,6 +367,8 @@ class TangoMotorDb():
                         self._motor_cache[m_subg][attr] = h5db_file[p3 + '/'+attr].value
             h5db_file.close()
         if verbose:
+            if cache:
+                print('\nMotor parameters copied to local cache.')
             print('=' * 79)
 
     def check_consistency(self, *args, **kwargs):

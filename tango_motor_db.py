@@ -152,6 +152,8 @@ class TangoMotorDb():
         self._motor_cache['loc']['zmx_slot'] = zmx_slot
         self._motor_cache['loc']['zmx_device_name'] = tango_proxies['zmx']['device_name']
         self._motor_cache['loc']['oms_device_name'] = tango_proxies['oms']['device_name']
+        # remove database_entry names, since we don't know which motor was pulled
+        self._database_entry = {'motorgroup': None, 'motorname': None}
 
         if verbose:
             self.cache_info()

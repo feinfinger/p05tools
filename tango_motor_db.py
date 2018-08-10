@@ -58,6 +58,7 @@ class TangoMotorDb():
                              'loc': {'zmx_slot': None,
                                      'zmx_device_name': None,
                                      'oms_device_name': None}}
+        self._database_entry = {'motorgroup': None, 'motorname': None}
         self._motor_subgroups = ['zmx', 'oms', 'loc']
         self._server_prefixes = \
             {'hzgpp05vme0:10000':{'zmx': '/p05/ZMX/mono.',
@@ -174,19 +175,18 @@ class TangoMotorDb():
                     if verbose:
                         print('Inserted: {} {}'.format(attribute, value))
                     return
+        if attribute in ['motorgroup', 'motorname']:
+            self._database_entry[attribute] = value
+            return
         raise Exception('{} not in cache (typo?)'.format(attribute))
 
-    def write_cache_to_server(self, zmx_slot, motorgroup, motorname, update=True, verbose=True):
+    def write_cache_to_server(self, zmx_slot, update=True, verbose=True):
         """
         Write motor attributes from internal cache to ZMX/OMS tango servers.
 
         param: zmx_slot <int>
             number of the zmx slot. use numbers >16 for second crate
             on hzgpp05vme0:10000 (DMM)
-        param: motorgroup <str>
-            Name for the group to which the motor belongs to
-        param: motorname <str>
-            Name of the motor
         param: update_db <boolean> (optional)
             whether to update the database and cache automatically or not
             default: True
@@ -211,7 +211,7 @@ class TangoMotorDb():
             self._motor_cache['loc']['zmx_slot'] = zmx_slot
             self._motor_cache['loc']['zmx_device_name'] = tango_proxies['zmx']['device_name']
             self._motor_cache['loc']['oms_device_name'] = tango_proxies['oms']['device_name']
-            self.write_cache_to_database(motorgroup, motorname, overwrite_all=False, verbose=verbose)
+            self.write_cache_to_database(overwrite_all=False, verbose=verbose)
 
     def cache_info(self):
         """
@@ -219,21 +219,19 @@ class TangoMotorDb():
         """
         print('=' * 79)
         print('Cached attributes\n')
+        print('motorgroup: {}'.format(self._database_entry['motorgroup']))
+        print('motorname: {}\n'.format(self._database_entry['motorname']))
         for subgroup in self._motor_cache:
             for attr, value in self._motor_cache[subgroup].items():
                 print('{:<9}: {:<23}: {}'.format(subgroup, attr, value))
         print('=' * 79)
 
-    def write_cache_to_database(self, motorgroup, motorname, overwrite_all=False, verbose=True):
+    def write_cache_to_database(self, overwrite_all=False, verbose=True):
         """
         Write motor attributes into a h5 database on disk. Default behaviour
         for existing entries is to only overwrite 'loc' entries.
         Use 'overwrite_all' if other parameters should be overwritten as well.
 
-        param: motorgroup <str>
-            Name for the group to which the motor belongs to
-        param: motorname <str>
-            Name of the motor
         param: overwrite_all <boolean> (optional)
             Overwrites also motor attributes if true. Affects ony 'zmx' and
             'oms' subgroups. The 'loc' entries will always be written.
@@ -241,8 +239,10 @@ class TangoMotorDb():
             Print information to console.
             default: True
         """
-        p1 = motorgroup  # database directory path 1st level
-        p2 = p1 + '/' + motorname  # database directory path 2nd level
+        if (self._database_entry['motorgroup'] and self._database_entry['motorname']) is None:
+            raise Exception('Error motorname and motorgroup must be supplied.')
+        p1 = self._database_entry['motorgroup']  # database directory path 1st level
+        p2 = p1 + '/' + self._database_entry['motorname']  # database directory path 2nd level
         with h5py.File(self._motor_db_filepath, 'a') as h5db_file:
             # write attributes to database, iterate over subgroups
             for m_subg in self._motor_subgroups:
@@ -356,7 +356,6 @@ class TangoMotorDb():
         p1 = db_entries[0]  # database directory path 1st level
         p2 = p1 + '/' + db_entries[1]  # database directory path 2nd level
         with h5py.File(self._motor_db_filepath, 'r') as h5db_file:
-            # create empty motor group entries if necessary
             for m_subg in self._motor_subgroups:
                 p3 = p2 + '/' + m_subg  # database directory path 3rd level
                 for attr in self._motor_cache[m_subg].keys():
@@ -365,6 +364,8 @@ class TangoMotorDb():
                         print('{:<9}: {:<23}: {}'.format(m_subg, attr, value))
                     if cache:
                         self._motor_cache[m_subg][attr] = h5db_file[p3 + '/'+attr].value
+                        self._database_entry['motorgroup'] = db_entries[0]
+                        self._database_entry['motorname'] = db_entries[1]
             h5db_file.close()
         if verbose:
             if cache:

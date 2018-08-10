@@ -313,8 +313,9 @@ class TangoMotorDb():
     def query_database(self, *args, **kwargs):
         """
         Queries motor attributes from h5 database and optionally stores them to
-        the internal cache. If any parameter is omitted or not in database, an
-        overview of the database contents will be printed instead.
+        the internal cache. If any parameter is omitted or not in database or
+        ambiguous, an overview of the (filtered) database contents will be
+        printed instead.
 
         param: motorgroup <str> (optional)
             Name for the group to which the motor belongs to

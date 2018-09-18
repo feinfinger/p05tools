@@ -62,18 +62,23 @@ class QbpmMonitor(QtGui.QWidget):
 #        self.listw = QtGui.QListWidget()
         r, g, w = [255, 0, 0], [0, 255, 0], [255, 255, 255]
         self.curves = {}
+        log_pen = pg.mkPen('w', width=2, style=QtCore.Qt.SolidLine)
+        avg_pen = pg.mkPen('r', width=3, style=QtCore.Qt.SolidLine)
+        target_pen = pg.mkPen('g', width=3, style=QtCore.Qt.DashLine)
+        petra_pen = pg.mkPen('w', width=3, style=QtCore.Qt.SolidLine)
+        pens = [log_pen, avg_pen, target_pen]
         log_avgcurr = {'avgcurr_log': w, 'avgcurr_mvavg_log': r, 'avgcurr_target_log': g}
         self.plot_avgcurr = pg.PlotWidget(title='avg. current')
         for n, (key, color) in enumerate(log_avgcurr.items()):
-            self.curves[key] = self.plot_avgcurr.plot(self.qbpm.log_arrays[key], pen=color)
+            self.curves[key] = self.plot_avgcurr.plot(self.qbpm.log_arrays[key], pen=pens[n])
         log_posx = {'posx_log': w, 'posx_mvavg_log': r, 'posx_target_log': g}
         self.plot_posx = pg.PlotWidget(title='x-position')
         for n, (key, color) in enumerate(log_posx.items()):
-            self.curves[key] = self.plot_posx.plot(self.qbpm.log_arrays[key], pen=color)
+            self.curves[key] = self.plot_posx.plot(self.qbpm.log_arrays[key], pen=pens[n])
         log_posz = {'posz_log': w, 'posz_mvavg_log': r, 'posz_target_log': g}
         self.plot_posz = pg.PlotWidget(title='z-position')
         for n, (key, color) in enumerate(log_posz.items()):
-            self.curves[key] = self.plot_posz.plot(self.qbpm.log_arrays[key], pen=color)
+            self.curves[key] = self.plot_posz.plot(self.qbpm.log_arrays[key], pen=pens[n])
 
         self.plot_petracurrent = pg.PlotWidget(title='PETRA beam current')
         self.curves['petracurrent_log'] = self.plot_petracurrent.plot(self.qbpm.log_arrays['petracurrent_log'])

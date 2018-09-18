@@ -57,7 +57,7 @@ class QbpmMonitor(QtGui.QWidget):
 
         self.text = QtGui.QLineEdit()
         self.text.setValidator(QtGui.QIntValidator())
-        self.text.setMaxLength(4)
+        self.text.setMaxLength(6)
         self.text.returnPressed.connect(self.change_params)
 #        self.listw = QtGui.QListWidget()
         r, g, w = [255, 0, 0], [0, 255, 0], [255, 255, 255]
@@ -81,7 +81,7 @@ class QbpmMonitor(QtGui.QWidget):
             self.curves[key] = self.plot_posz.plot(self.qbpm.log_arrays[key], pen=pens[n])
 
         self.plot_petracurrent = pg.PlotWidget(title='PETRA beam current')
-        self.curves['petracurrent_log'] = self.plot_petracurrent.plot(self.qbpm.log_arrays['petracurrent_log'])
+        self.curves['petracurrent_log'] = self.plot_petracurrent.plot(self.qbpm.log_arrays['petracurrent_log'], pen=petra_pen)
         #Create a grid layout to manage the widgets size and position
         layout = QtGui.QGridLayout()
         self.setLayout(layout)

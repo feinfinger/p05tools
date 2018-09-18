@@ -21,8 +21,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.posz_target = 0
         self.avgcurr_target = 0
         self.qbpm = qbpm(address, distance)
-        self.initUI()
-        self.frequency = 5    # in Hz
+        self.frequency = 5.0    # in Hz
         self.polling = False
         self._generator_poll = None
         self._timerId_poll = None
@@ -34,31 +33,44 @@ class QbpmMonitor(QtGui.QWidget):
         self.dcm_bragg_angle = self.dcm_bragg_tserver.Position
         self.dcm_pitch_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_xtal2_pitch')
 
+        self.initUI()
 
     def initUI(self):
         ## Create some widgets to be placed inside
+        # labels
+        self.poll_label = QtGui.QLabel("poll")
+        self.feedback_label = QtGui.QLabel("feedback")
+        self.ll_label = QtGui.QLabel("log length")
+        self.freq_label = QtGui.QLabel("frequency")
+        self.pitch_label = QtGui.QLabel("DCM pitch: {}".format(self.dcm_pitch_tserver.Position))
+        # quit button
         qbtn = QtGui.QPushButton('Quit', self)
         qbtn.clicked.connect(QtCore.QCoreApplication.instance().quit)
+        # reset button
         qbtn.resize(qbtn.sizeHint())
-
         reset_btn = QtGui.QPushButton('Reset', self)
         reset_btn.clicked.connect(self.reset_logs)
         reset_btn.resize(qbtn.sizeHint())
-
-        self.rbtn = QtGui.QPushButton('Poll',self)
+        # poll button
+        self.rbtn = QtGui.QPushButton(self)
         self.rbtn.clicked.connect(self.toggle_polling)
         self.rbtn.resize(qbtn.sizeHint())
         self.rbtn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
-
-        self.fbtn = QtGui.QPushButton('Feedback',self)
+        # feedback button
+        self.fbtn = QtGui.QPushButton(self)
         self.fbtn.clicked.connect(self.toggle_feedback)
         self.fbtn.resize(qbtn.sizeHint())
         self.fbtn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
-
-        self.text = QtGui.QLineEdit()
-        self.text.setValidator(QtGui.QIntValidator())
-        self.text.setMaxLength(6)
-        self.text.returnPressed.connect(self.change_params)
+        # log length text field
+        self.lltext = QtGui.QLineEdit(str(self.qbpm.log_length))
+        self.lltext.setValidator(QtGui.QIntValidator())
+        self.lltext.setMaxLength(6)
+        self.lltext.returnPressed.connect(self.change_loglength)
+        # frequency text field
+        self.ftext = QtGui.QLineEdit(str(self.frequency))
+        self.ftext.setValidator(QtGui.QDoubleValidator())
+        self.ftext.setMaxLength(6)
+        self.ftext.returnPressed.connect(self.change_frequency)
 #        self.listw = QtGui.QListWidget()
         r, g, w = [255, 0, 0], [0, 255, 0], [255, 255, 255]
         self.curves = {}
@@ -87,16 +99,22 @@ class QbpmMonitor(QtGui.QWidget):
         self.setLayout(layout)
 
         ## Add widgets to the layout in their proper positions
-        layout.addWidget(self.rbtn, 0, 0)   # button goes in lower-left
-        layout.addWidget(self.fbtn, 1, 0)   # button goes in lower-left
-        layout.addWidget(reset_btn, 2, 0)   # button goes in lower-left
-        layout.addWidget(self.text, 3, 0)   # text edit goes in middle-left
+        layout.addWidget(self.poll_label, 0, 0)
+        layout.addWidget(self.feedback_label, 1, 0)
+        layout.addWidget(self.ll_label, 3, 0)
+        layout.addWidget(self.freq_label, 4, 0)
+        layout.addWidget(self.rbtn, 0, 1)   # button goes in lower-left
+        layout.addWidget(self.fbtn, 1, 1)   # button goes in lower-left
+        layout.addWidget(reset_btn, 2, 1)   # button goes in lower-left
+        layout.addWidget(self.lltext, 3, 1)   # text edit goes in middle-left
+        layout.addWidget(self.ftext, 4, 1)   # text edit goes in middle-left
+        layout.addWidget(self.pitch_label, 8, 0)   # button goes in lower-left
         layout.addWidget(qbtn, 9, 0)   # button goes in lower-left
 #        layout.addWidget(self.listw, 1, 0)  # list widget goes in bottom-left
-        layout.addWidget(self.plot_avgcurr, 0, 1, 5, 1)  # plot goes on right side, spanning 3 rows
-        layout.addWidget(self.plot_petracurrent, 0, 2, 5, 1)  # plot goes on right side, spanning 3 rows
-        layout.addWidget(self.plot_posx, 5, 1, 5, 1)  # plot goes on right side, spanning 3 rows
-        layout.addWidget(self.plot_posz, 5, 2, 5, 1)  # plot goes on right side, spanning 3 rows
+        layout.addWidget(self.plot_avgcurr, 0, 2, 5, 3)  # plot goes on right side, spanning 3 rows
+        layout.addWidget(self.plot_petracurrent, 0, 5, 5, 3)  # plot goes on right side, spanning 3 rows
+        layout.addWidget(self.plot_posx, 5, 2, 5, 3)  # plot goes on right side, spanning 3 rows
+        layout.addWidget(self.plot_posz, 5, 5, 5, 3)  # plot goes on right side, spanning 3 rows
 
         ## Display the widget as a new window
         self.show()
@@ -118,7 +136,7 @@ class QbpmMonitor(QtGui.QWidget):
         while True:
             self.qbpm.read_qbpm()
             self.plot_update()
-            time.sleep(1/self.frequency)
+            self.pitch_label.setText("DCM pitch: {}".format(self.dcm_pitch_tserver.Position))
             yield
 
     def start_loop_poll(self):  # Connect to Start-button clicked()
@@ -195,6 +213,7 @@ class QbpmMonitor(QtGui.QWidget):
 
     def timerEvent(self, event):
         # This is called every time the GUI is idle.
+        time.sleep(1/self.frequency)
         if self._generator_poll is None:
             if self._generator_feedback is not None:
                 print('timer.')
@@ -214,18 +233,31 @@ class QbpmMonitor(QtGui.QWidget):
             self.stop_loop_feedback()  # Iteration has finshed, kill the timer
             self.stop_loop_poll()  # Iteration has finshed, kill the timer
 
-    def change_params(self):
-        log_length = int(self.text.text())
+    def change_loglength(self):
+        if not self.lltext.text():
+            return
+        log_length = int(self.lltext.text())
         if log_length < self.qbpm.box_length:
             log_length = self.qbpm.box_length
+            self.lltext.setText(str(log_length))
         self.qbpm.change_log_length(log_length)
+
+    def change_frequency(self):
+        if not self.ftext.text():
+            return
+        frequency = float(self.ftext.text())
+        if frequency > 10:
+            frequency = 10.0
+            self.ftext.setText(str(frequency))
+        self.frequency = frequency
+
 
 class qbpm():
     def __init__(self, address, distance):
         self.tserver = tango.DeviceProxy(address)
         self.distance = distance
         self.petra = tango.DeviceProxy('hzgpp05vme1:10000/PETRA/GLOBALS/keyword')
-        self.log_length = 40
+        self.log_length = 400
         self.log_names = {'log_vals': ['posx_log', 'posz_log', 'avgcurr_log', 'petracurrent_log'],
                           'log_mvavg': ['posx_mvavg_log', 'posz_mvavg_log', 'avgcurr_mvavg_log'],
                           'log_target': ['posx_target_log', 'posz_target_log', 'avgcurr_target_log']}

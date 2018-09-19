@@ -17,6 +17,7 @@ import time
 class QbpmMonitor(QtGui.QWidget):
     def __init__(self, address, distance):
         super(QbpmMonitor, self).__init__()
+        self.title = address
         self.posx_target = 0
         self.posz_target = 0
         self.avgcurr_target = 0
@@ -74,26 +75,44 @@ class QbpmMonitor(QtGui.QWidget):
 #        self.listw = QtGui.QListWidget()
         r, g, w = [255, 0, 0], [0, 255, 0], [255, 255, 255]
         self.curves = {}
-        log_pen = pg.mkPen('w', width=2, style=QtCore.Qt.SolidLine)
+        log_pen = pg.mkPen('w', width=1, style=QtCore.Qt.SolidLine)
         avg_pen = pg.mkPen('r', width=3, style=QtCore.Qt.SolidLine)
-        target_pen = pg.mkPen('g', width=3, style=QtCore.Qt.DashLine)
+        target_pen = pg.mkPen('g', width=1, style=QtCore.Qt.DashLine)
         petra_pen = pg.mkPen('w', width=3, style=QtCore.Qt.SolidLine)
         pens = [log_pen, avg_pen, target_pen]
-        log_avgcurr = {'avgcurr_log': w, 'avgcurr_mvavg_log': r, 'avgcurr_target_log': g}
-        self.plot_avgcurr = pg.PlotWidget(title='avg. current')
-        for n, (key, color) in enumerate(log_avgcurr.items()):
-            self.curves[key] = self.plot_avgcurr.plot(self.qbpm.log_arrays[key], pen=pens[n])
-        log_posx = {'posx_log': w, 'posx_mvavg_log': r, 'posx_target_log': g}
-        self.plot_posx = pg.PlotWidget(title='x-position')
-        for n, (key, color) in enumerate(log_posx.items()):
-            self.curves[key] = self.plot_posx.plot(self.qbpm.log_arrays[key], pen=pens[n])
-        log_posz = {'posz_log': w, 'posz_mvavg_log': r, 'posz_target_log': g}
-        self.plot_posz = pg.PlotWidget(title='z-position')
-        for n, (key, color) in enumerate(log_posz.items()):
-            self.curves[key] = self.plot_posz.plot(self.qbpm.log_arrays[key], pen=pens[n])
-
-        self.plot_petracurrent = pg.PlotWidget(title='PETRA beam current')
-        self.curves['petracurrent_log'] = self.plot_petracurrent.plot(self.qbpm.log_arrays['petracurrent_log'], pen=petra_pen)
+        # define plot font
+        font=QtGui.QFont()
+        font.setPixelSize(16)
+        # make PlotWidgets
+        self.plot_main = pg.GraphicsLayoutWidget()
+        self.plot_avgcurr = self.plot_main.addPlot(title='avg. current', row=0, col=0)
+        self.plot_petracurrent = self.plot_main.addPlot(title='PETRA beam current', row=0, col=1)
+#        self.plot_main.nextRow()
+        self.plot_posx = self.plot_main.addPlot(title='x-position', row=1, col=0)
+        self.plot_posz = self.plot_main.addPlot(title='z-position', row=1, col=1)
+        # assign qbpm data tp styles to PlotWidgets
+        styles = {'avgcurr_log': (self.plot_avgcurr, log_pen),
+                  'avgcurr_mvavg_log': (self.plot_avgcurr, avg_pen),
+                  'avgcurr_target_log': (self.plot_avgcurr, target_pen),
+                  'posx_log': (self.plot_posx, log_pen),
+                  'posx_mvavg_log': (self.plot_posx, avg_pen),
+                  'posx_target_log': (self.plot_posx, target_pen),
+                  'posz_log': (self.plot_posz, log_pen),
+                  'posz_mvavg_log': (self.plot_posz, avg_pen),
+                  'posz_target_log': (self.plot_posz, target_pen),
+                  'petracurrent_log': (self.plot_petracurrent, petra_pen)
+                  }
+        # plot curves
+        for key, style in styles.items():
+            self.curves[key] = style[0].plot(self.qbpm.log_arrays[key], pen=style[1])
+            style[0].getAxis("bottom").tickFont = font
+            style[0].getAxis("bottom").setStyle(tickTextOffset=20)
+            style[0].getAxis("left").tickFont = font
+            style[0].getAxis("left").setStyle(tickTextOffset=20)
+            style[0].getAxis("left").setWidth(100)
+            style[0].getAxis("bottom").setGrid(100)
+            style[0].getAxis("left").setGrid(100)
+      
         #Create a grid layout to manage the widgets size and position
         layout = QtGui.QGridLayout()
         self.setLayout(layout)
@@ -108,15 +127,16 @@ class QbpmMonitor(QtGui.QWidget):
         layout.addWidget(reset_btn, 2, 1)   # button goes in lower-left
         layout.addWidget(self.lltext, 3, 1)   # text edit goes in middle-left
         layout.addWidget(self.ftext, 4, 1)   # text edit goes in middle-left
-        layout.addWidget(self.pitch_label, 8, 0)   # button goes in lower-left
-        layout.addWidget(qbtn, 9, 0)   # button goes in lower-left
-#        layout.addWidget(self.listw, 1, 0)  # list widget goes in bottom-left
-        layout.addWidget(self.plot_avgcurr, 0, 2, 5, 3)  # plot goes on right side, spanning 3 rows
-        layout.addWidget(self.plot_petracurrent, 0, 5, 5, 3)  # plot goes on right side, spanning 3 rows
-        layout.addWidget(self.plot_posx, 5, 2, 5, 3)  # plot goes on right side, spanning 3 rows
-        layout.addWidget(self.plot_posz, 5, 5, 5, 3)  # plot goes on right side, spanning 3 rows
+        layout.addWidget(self.pitch_label, 8, 0, 1, 2)   # button goes in lower-left
+        layout.addWidget(qbtn, 9, 0, 1, 2)   # button goes in lower-left
+        layout.addWidget(self.plot_main, 0,2,10,1)
+
+        layout.setColumnStretch(0,0.1)
+        layout.setColumnStretch(1,0.1)
+        layout.setColumnStretch(2,1)
 
         ## Display the widget as a new window
+        self.setWindowTitle(self.title)
         self.show()
 
     def plot_update(self):

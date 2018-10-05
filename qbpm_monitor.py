@@ -207,7 +207,6 @@ class QbpmMonitor(QtGui.QWidget):
             counter = 0 if counter == interval else counter + 1
             yield
 
-
     def start_loop_feedback(self):  # Connect to Start-button clicked()
         self.stop_loop_feedback()  # Stop any existing timer
         self._generator_feedback = self.set_feedback()  # Start the loop

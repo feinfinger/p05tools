@@ -13,6 +13,7 @@ import tango
 import numpy
 import time
 import datetime
+import os
 
 
 class QbpmMonitor(QtGui.QWidget):
@@ -36,6 +37,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.dcm_bragg_angle = self.dcm_bragg_tserver.Position
         self.dcm_pitch_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_xtal2_pitch')
         self.heartbeat = time.time()
+        self.feedback_file = '/tmp/qbpmfeedback.run'
 
         self.initUI()
 
@@ -241,10 +243,13 @@ class QbpmMonitor(QtGui.QWidget):
 
     def timerEvent(self, event):
         # This is called every time the GUI is idle.
+        if os.path.isfile(self.feedback_file):
+            self.start_loop_feedback()
+        else:
+            self.stop_loop_feedback()
         if self.check_pulse():
             if self._generator_poll is None:
                 if self._generator_feedback is not None:
-                    print('timer.')
                     self.stop_loop_feedback()
                 return
             try:
@@ -254,14 +259,16 @@ class QbpmMonitor(QtGui.QWidget):
                 try:
                     next(self._generator_feedback)
                 except:
-                    print('generator feedback exception')
                     self.stop_loop_feedback()
             except StopIteration:
-                print('generator poll exception')
                 self.stop_loop_feedback()  # Iteration has finshed, kill the timer
                 self.stop_loop_poll()  # Iteration has finshed, kill the timer
 
     def check_pulse(self):
+        """
+        This function checks if an update of the log_arrays is due.
+        :return: boolean
+        """
         timedelta = time.time() - self.heartbeat
         update_delay = 1/self.qbpm.frequency
         time_to_update = False

@@ -38,8 +38,11 @@ class QbpmMonitor(QtGui.QWidget):
         self.dcm_pitch_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_xtal2_pitch')
         self.heartbeat = time.time()
         self.feedback_file = '/tmp/qbpmfeedback.run'
+        if os.path.isfile(self.feedback_file):
+            os.remove(self.feedback_file)
         self.sensitivity = 10
         self.cycle = 0
+        self.feedback_triggered = False
 
         self.initUI()
 
@@ -174,7 +177,7 @@ class QbpmMonitor(QtGui.QWidget):
     def toggle_polling(self):
         self.polling = not self.polling
         if not self.polling:
-            print('In toggle polling')
+            #print('In toggle polling')
             self.stop_loop_feedback()
         self.start_loop_poll() if self.polling else self.stop_loop_poll()
 
@@ -204,7 +207,7 @@ class QbpmMonitor(QtGui.QWidget):
         if self.feedback:
             self.start_loop_feedback()
         else:
-            print('In toggle feedback')
+            #print('In toggle feedback')
             self.stop_loop_feedback()
 
     def set_feedback(self):
@@ -249,7 +252,7 @@ class QbpmMonitor(QtGui.QWidget):
 
     def stop_loop_feedback(self):  # Connect to Stop-button clicked()
         if os.path.isfile(self.feedback_file):
-            print('Deleting feedback file.')
+            #print('Deleting feedback file.')
             os.remove(self.feedback_file)
         if self._timerId_feedback is not None:
             self.killTimer(self._timerId_feedback)
@@ -263,14 +266,12 @@ class QbpmMonitor(QtGui.QWidget):
 
     def timerEvent(self, event):
         # This is called every time the GUI is idle.
-        if os.path.isfile(self.feedback_file):
-            self.qbpm.feedback_on = True
-        else:
-            self.qbpm.feedback_on = False
+        if self.ext_fb_trigger():
+            self.start_loop_feedback()
         if self.check_pulse():
             if self._generator_poll is None:
                 if self._generator_feedback is not None:
-                    print('In timerEvent 2')
+                    #print('In timerEvent 2')
                     self.stop_loop_feedback()
                 return
             try:
@@ -283,9 +284,20 @@ class QbpmMonitor(QtGui.QWidget):
                     print(e)
                     self.stop_loop_feedback()
             except StopIteration:
-                print('In timerEvent 5')
+                #print('In timerEvent 5')
                 self.stop_loop_feedback()  # Iteration has finshed, kill the timer
                 self.stop_loop_poll()  # Iteration has finshed, kill the timer
+
+    def ext_fb_trigger(self):
+        if os.path.isfile(self.feedback_file):
+            if self.feedback_triggered:
+                return False
+            else:
+                self.feedback_triggered = True
+                return True
+        else:
+            self.feedback_triggered = False
+            return False
 
     def check_pulse(self):
         """
@@ -366,7 +378,12 @@ class qbpm():
             if self.feedback_on:
                 self.log_arrays[key][-1] = targets[n]
             else:
-                self.log_arrays[key][-1] = self.log_arrays[self.log_names['log_mvavg'][n]][-1]
+                last_mvg_avg = self.log_arrays[self.log_names['log_mvavg'][n]][-1]
+                self.log_arrays[key][-1] = last_mvg_avg
+        if not self.feedback_on:
+            self.posx_target = self.log_arrays['posx_mvavg_log'][-1]
+            self.posz_target = self.log_arrays['posz_mvavg_log'][-1]
+            self.avgcurr_target = self.log_arrays['avgcurr_mvavg_log'][-1]
         # finally append unix timestamp to log_xarr
         self.log_xarr[-1] = self.timestamp()
 

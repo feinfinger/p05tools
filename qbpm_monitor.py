@@ -38,6 +38,8 @@ class QbpmMonitor(QtGui.QWidget):
         self.dcm_pitch_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_xtal2_pitch')
         self.heartbeat = time.time()
         self.feedback_file = '/tmp/qbpmfeedback.run'
+        self.sensitivity = 10
+        self.cycle = 0
 
         self.initUI()
 
@@ -48,6 +50,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.feedback_label = QtGui.QLabel("feedback")
         self.ll_label = QtGui.QLabel("backlog (s)")
         self.freq_label = QtGui.QLabel("frequency")
+        self.sensitivity_label = QtGui.QLabel("sensitivity")
         self.pitch_label = QtGui.QLabel("DCM pitch: {}".format(self.dcm_pitch_tserver.Position))
         # quit button
         qbtn = QtGui.QPushButton('Quit', self)
@@ -77,7 +80,16 @@ class QbpmMonitor(QtGui.QWidget):
         self.ftext.setValidator(QtGui.QDoubleValidator())
         self.ftext.setMaxLength(6)
         self.ftext.returnPressed.connect(self.change_frequency)
-#        self.listw = QtGui.QListWidget()
+        # sensititvity slider
+        self.sslider = QtGui.QSlider(self)
+        self.sslider.setOrientation(QtCore.Qt.Horizontal)
+        self.sslider.setMinimum(0)
+        self.sslider.setMaximum(9)
+        self.sslider.setTickPosition(QtGui.QSlider.TicksBothSides)
+        self.sslider.setTickInterval(1)
+        self.sslider.setSingleStep(1)
+        self.sslider.valueChanged.connect(self.set_sensititvity)
+
         r, g, w = [255, 0, 0], [0, 255, 0], [255, 255, 255]
         self.curves = {}
         log_pen = pg.mkPen('w', width=1, style=QtCore.Qt.SolidLine)
@@ -132,11 +144,13 @@ class QbpmMonitor(QtGui.QWidget):
         layout.addWidget(self.feedback_label, 1, 0)
         layout.addWidget(self.ll_label, 3, 0)
         layout.addWidget(self.freq_label, 4, 0)
+        layout.addWidget(self.sensitivity_label, 5, 0)
         layout.addWidget(self.rbtn, 0, 1)   # button goes in lower-left
         layout.addWidget(self.fbtn, 1, 1)   # button goes in lower-left
         layout.addWidget(reset_btn, 2, 1)   # button goes in lower-left
         layout.addWidget(self.lltext, 3, 1)   # text edit goes in middle-left
         layout.addWidget(self.ftext, 4, 1)   # text edit goes in middle-left
+        layout.addWidget(self.sslider, 5, 1)
         layout.addWidget(self.pitch_label, 8, 0, 1, 2)   # button goes in lower-left
         layout.addWidget(qbtn, 9, 0, 1, 2)   # button goes in lower-left
         layout.addWidget(self.plot_main, 0,2,10,1)
@@ -159,7 +173,9 @@ class QbpmMonitor(QtGui.QWidget):
 
     def toggle_polling(self):
         self.polling = not self.polling
-        if not self.polling: self.stop_loop_feedback()
+        if not self.polling:
+            print('In toggle polling')
+            self.stop_loop_feedback()
         self.start_loop_poll() if self.polling else self.stop_loop_poll()
 
     def read_qbpm_loop(self):
@@ -185,41 +201,39 @@ class QbpmMonitor(QtGui.QWidget):
 
     def toggle_feedback(self):
         self.feedback = not self.feedback
-        self.start_loop_feedback() if self.feedback else self.stop_loop_feedback()
+        if self.feedback:
+            self.start_loop_feedback()
+        else:
+            print('In toggle feedback')
+            self.stop_loop_feedback()
 
     def set_feedback(self):
-        counter = 0
         while True:
             interval = 20
             if self.qbpm.log_arrays['avgcurr_log'][-1] < self.feedback_threshold:
                 print('intensity too low.')
                 self.stop_loop_feedback()
             jitter = self.qbpm.log_arrays['posz_mvavg_log'][-int(numpy.floor(interval/2)):].std()  # calculate jitter based on last 10 log values
-            bandwidth = 10 * jitter
+            bandwidth = self.sensitivity * jitter
             current_pos = self.qbpm.log_arrays['posz_mvavg_log'][-1]
             target = self.qbpm.posz_target
             corr_factor = 0.05
-            if current_pos < (target + bandwidth):
-                corr_angle = -(abs(current_pos - target) * corr_factor)/self.qbpm.distance
-                if counter == interval:
-                    print('Moving pitch down: {}'.format(corr_angle))
+            if not ((target - bandwidth) < current_pos < (target + bandwidth)):
+                corr_angle = -((current_pos - target) * corr_factor)/self.qbpm.distance
+                if self.cycle == interval:
+                    print('Moving pitch: {}'.format(corr_angle))
                     dcm_curr_pitchpos = self.dcm_pitch_tserver.Position
                     dcm_target_pitchpos = dcm_curr_pitchpos + corr_angle
                     self.dcm_pitch_tserver.write_attribute('Position', dcm_target_pitchpos)
-                    counter = 0
-            if current_pos > (target - bandwidth):
-                corr_angle = (abs(current_pos - target) * corr_factor)/self.qbpm.distance
-                if counter == interval:
-                    print('Moving pitch up: {}'.format(corr_angle))
-                    dcm_curr_pitchpos = self.dcm_pitch_tserver.Position
-                    dcm_target_pitchpos = dcm_curr_pitchpos + corr_angle
-                    self.dcm_pitch_tserver.write_attribute('Position', dcm_target_pitchpos)
-                    counter = 0
-            counter = 0 if counter == interval else counter + 1
+                    self.cycle = 0
+            self.cycle = 0 if self.cycle == interval else self.cycle + 1
             yield
 
     def start_loop_feedback(self):  # Connect to Start-button clicked()
+        #print('In start_loop_feedback')
         self.stop_loop_feedback()  # Stop any existing timer
+        if not os.path.isfile(self.feedback_file):
+            os.mknod(self.feedback_file)
         self._generator_feedback = self.set_feedback()  # Start the loop
         self._timerId_feedback = self.startTimer(0)   # This is the idle timer
         self.fbtn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPause))
@@ -234,6 +248,9 @@ class QbpmMonitor(QtGui.QWidget):
         self.dcm_bragg_angle = self.dcm_bragg_tserver.Position
 
     def stop_loop_feedback(self):  # Connect to Stop-button clicked()
+        if os.path.isfile(self.feedback_file):
+            print('Deleting feedback file.')
+            os.remove(self.feedback_file)
         if self._timerId_feedback is not None:
             self.killTimer(self._timerId_feedback)
         self._generator_feedback = None
@@ -241,15 +258,19 @@ class QbpmMonitor(QtGui.QWidget):
         self.fbtn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
         self.qbpm.feedback_on = False
 
+    def set_sensititvity(self, value):
+        self.sensitivity = 10 - value
+
     def timerEvent(self, event):
         # This is called every time the GUI is idle.
         if os.path.isfile(self.feedback_file):
-            self.start_loop_feedback()
+            self.qbpm.feedback_on = True
         else:
-            self.stop_loop_feedback()
+            self.qbpm.feedback_on = False
         if self.check_pulse():
             if self._generator_poll is None:
                 if self._generator_feedback is not None:
+                    print('In timerEvent 2')
                     self.stop_loop_feedback()
                 return
             try:
@@ -258,9 +279,11 @@ class QbpmMonitor(QtGui.QWidget):
                     return
                 try:
                     next(self._generator_feedback)
-                except:
+                except Exception as e:
+                    print(e)
                     self.stop_loop_feedback()
             except StopIteration:
+                print('In timerEvent 5')
                 self.stop_loop_feedback()  # Iteration has finshed, kill the timer
                 self.stop_loop_poll()  # Iteration has finshed, kill the timer
 
@@ -288,6 +311,8 @@ class QbpmMonitor(QtGui.QWidget):
         if not self.ftext.text():
             return
         frequency = float(self.ftext.text())
+        if frequency > 6.0:
+            frequency = 6.0
         self.qbpm.change_frequency(frequency)
         self.ftext.setText(str(self.qbpm.frequency))
 

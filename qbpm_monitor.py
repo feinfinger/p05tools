@@ -337,7 +337,6 @@ class qbpm():
                 self.log_arrays[key][-1] = self.log_arrays[self.log_names['log_mvavg'][n]][-1]
         # finally append unix timestamp to log_xarr
         self.log_xarr[-1] = self.timestamp()
-        print(self.log_xarr[-1] - self.log_xarr[0])
 
     def change_log_length(self, log_length):
         len_diff = abs(self.log_length - log_length)

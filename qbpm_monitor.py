@@ -273,7 +273,9 @@ class QbpmMonitor(QtGui.QWidget):
                     dcm_curr_pitchpos = self.dcm_pitch_tserver.Position
                     dcm_target_pitchpos = dcm_curr_pitchpos + corr_angle
                     if not self.simulate_feedback:
+                        self.dcm_pitch_tserver.write_attribute('StepBacklash',0)
                         self.dcm_pitch_tserver.write_attribute('Position', dcm_target_pitchpos)
+                        self.dcm_pitch_tserver.write_attribute('StepBacklash',self.dcm_step_backlash)
                     self.cycle = 0
             self.cycle = 0 if self.cycle == interval else self.cycle + 1
             yield
@@ -296,7 +298,6 @@ class QbpmMonitor(QtGui.QWidget):
         self.qbpm.posz_target = self.posz_target
         self.qbpm.avgcurr_target = self.avgcurr_target
         self.dcm_bragg_angle = self.dcm_bragg_tserver.Position
-        self.dcm_pitch_tserver.write_attribute('StepBacklash',0)
 
     def _stop_loop_feedback(self):  # Connect to Stop-button clicked()
         """
@@ -309,7 +310,6 @@ class QbpmMonitor(QtGui.QWidget):
         self._timerId_feedback = None
         self.fbtn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
         self.qbpm.feedback_on = False
-        self.dcm_pitch_tserver.write_attribute('StepBacklash',self.dcm_step_backlash)
 
     def _set_sensitivity(self, value):
         """

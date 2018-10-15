@@ -54,6 +54,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.cycle = 0
         self.feedback_triggered = False
         self.simulate_feedback = simulate_feedback
+        self.dcm_step_backlash = self.dcm_pitch_tserver.read_attribute('StepBacklash').value
 
         ################################################################################################################
         # initUI
@@ -141,8 +142,8 @@ class QbpmMonitor(QtGui.QWidget):
                   }
         # plot curves
         for key, style in styles.items():
-            self.curves[key] = style[0].plot(self.qbpm.log_arrays[key], pen=style[1], symbol='o')
-            # self.curves[key] = style[0].plot(self.qbpm.log_arrays[key], pen=style[1])
+            # self.curves[key] = style[0].plot(self.qbpm.log_arrays[key], pen=style[1], symbol='o')
+            self.curves[key] = style[0].plot(self.qbpm.log_arrays[key], pen=style[1])
             style[0].getAxis("bottom").tickFont = font
             style[0].getAxis("bottom").setStyle(tickTextOffset=20)
             style[0].getAxis("left").tickFont = font
@@ -257,11 +258,14 @@ class QbpmMonitor(QtGui.QWidget):
                 print('intensity too low.')
                 self._stop_loop_feedback()
             # calculate jitter based on last 10 log values
-            jitter = self.qbpm.log_arrays['posz_mvavg_log'][-int(numpy.floor(interval/2)):].std()
+            # jitter = self.qbpm.log_arrays['posz_mvavg_log'][-int(numpy.floor(interval/2)):].std()
+            jitter = self.qbpm.log_arrays['posx_mvavg_log'][-int(numpy.floor(interval/2)):].std()
             bandwidth = self.sensitivity * jitter
-            current_pos = self.qbpm.log_arrays['posz_mvavg_log'][-1]
-            target = self.qbpm.posz_target
-            corr_factor = 0.1
+            # current_pos = self.qbpm.log_arrays['posz_mvavg_log'][-1]
+            current_pos = self.qbpm.log_arrays['posx_mvavg_log'][-1]
+            # target = self.qbpm.posz_target
+            target = self.qbpm.posx_target
+            corr_factor = 0.2
             if not ((target - bandwidth) < current_pos < (target + bandwidth)):
                 corr_angle = -((current_pos - target) * corr_factor)/self.qbpm.distance
                 if self.cycle == interval:
@@ -292,6 +296,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.qbpm.posz_target = self.posz_target
         self.qbpm.avgcurr_target = self.avgcurr_target
         self.dcm_bragg_angle = self.dcm_bragg_tserver.Position
+        self.dcm_pitch_tserver.write_attribute('StepBacklash',0)
 
     def _stop_loop_feedback(self):  # Connect to Stop-button clicked()
         """
@@ -304,6 +309,7 @@ class QbpmMonitor(QtGui.QWidget):
         self._timerId_feedback = None
         self.fbtn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
         self.qbpm.feedback_on = False
+        self.dcm_pitch_tserver.write_attribute('StepBacklash',self.dcm_step_backlash)
 
     def _set_sensitivity(self, value):
         """
@@ -575,5 +581,5 @@ if __name__ == '__main__':
     # qbpm1 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.01', 2)
     qbpm2 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.02', 7)
     app = QtGui.QApplication(sys.argv)
-    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=True)
+    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=False)
     sys.exit(app.exec_())

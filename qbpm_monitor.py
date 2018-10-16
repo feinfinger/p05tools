@@ -23,7 +23,7 @@ class QbpmMonitor(QtGui.QWidget):
     Additionally it is possible to let this monitor regulate the vertical beam position in a feedback
     loop.
     """
-    def __init__(self, qbpm_instance, simulate_feedback=False):
+    def __init__(self, qbpm_instance, simulate_feedback=False, log=False):
         """
         Set up GUI and initialize class variables.
         :param qbpm_instance: Qbpm() class instance
@@ -55,6 +55,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.feedback_triggered = False
         self.simulate_feedback = simulate_feedback
         self.dcm_step_backlash = self.dcm_pitch_tserver.read_attribute('StepBacklash').value
+        self.log = log
 
         ################################################################################################################
         # initUI
@@ -210,6 +211,19 @@ class QbpmMonitor(QtGui.QWidget):
             self.qbpm.read_qbpm()
             self._plot_update()
             self.pitch_label.setText("DCM pitch: {:.9f}".format(self.dcm_pitch_tserver.Position))
+            if self.log:
+                fname = 'qbpm_log.csv'
+                if not os.path.isfile(fname):
+                    with open(fname, 'a') as f:
+                        f.write('timestamp qbpm_avgcurr qbpm_x qbpm_z petra_curr\n')
+                with open(fname, 'a') as f:
+                    t = self.qbpm.log_time[-1]
+                    a = self.qbpm.log_arrays['avgcurr_log'][-1]
+                    x = self.qbpm.log_arrays['posx_log'][-1]
+                    z = self.qbpm.log_arrays['posz_log'][-1]
+                    p = self.qbpm.log_arrays['petracurrent_log'][-1]
+                    l = '{} {} {} {} {}\n'.format(t, a, x ,z , p)
+                    f.write(l)
             yield
 
     def _start_loop_poll(self):
@@ -581,5 +595,5 @@ if __name__ == '__main__':
     # qbpm1 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.01', 2)
     qbpm2 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.02', 7)
     app = QtGui.QApplication(sys.argv)
-    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=False)
+    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=True, log=False)
     sys.exit(app.exec_())

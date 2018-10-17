@@ -272,13 +272,13 @@ class QbpmMonitor(QtGui.QWidget):
                 print('intensity too low.')
                 self._stop_loop_feedback()
             # calculate jitter based on last 10 log values
-            # jitter = self.qbpm.log_arrays['posz_mvavg_log'][-int(numpy.floor(interval/2)):].std()
-            jitter = self.qbpm.log_arrays['posx_mvavg_log'][-int(numpy.floor(interval/2)):].std()
+            jitter = self.qbpm.log_arrays['posz_mvavg_log'][-int(numpy.floor(interval/2)):].std()
+            # jitter = self.qbpm.log_arrays['posx_mvavg_log'][-int(numpy.floor(interval/2)):].std()
             bandwidth = self.sensitivity * jitter
-            # current_pos = self.qbpm.log_arrays['posz_mvavg_log'][-1]
-            current_pos = self.qbpm.log_arrays['posx_mvavg_log'][-1]
-            # target = self.qbpm.posz_target
-            target = self.qbpm.posx_target
+            current_pos = self.qbpm.log_arrays['posz_mvavg_log'][-1]
+            # current_pos = self.qbpm.log_arrays['posx_mvavg_log'][-1]
+            target = self.qbpm.posz_target
+            # target = self.qbpm.posx_target
             corr_factor = 0.2
             if not ((target - bandwidth) < current_pos < (target + bandwidth)):
                 corr_angle = -((current_pos - target) * corr_factor)/self.qbpm.distance

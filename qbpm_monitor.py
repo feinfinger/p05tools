@@ -23,7 +23,7 @@ class QbpmMonitor(QtGui.QWidget):
     Additionally it is possible to let this monitor regulate the vertical beam position in a feedback
     loop.
     """
-    def __init__(self, qbpm_instance, simulate_feedback=False, log=False):
+    def __init__(self, qbpm_instance, simulate_feedback=False):
         """
         Set up GUI and initialize class variables.
         :param qbpm_instance: Qbpm() class instance
@@ -54,7 +54,6 @@ class QbpmMonitor(QtGui.QWidget):
         self.feedback_triggered = False
         self.simulate_feedback = simulate_feedback
         self.dcm_step_backlash = self.dcm_pitch_tserver.read_attribute('StepBacklash').value
-        self.log = log
 
         ################################################################################################################
         # initUI
@@ -66,6 +65,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.freq_label = QtGui.QLabel("frequency")
         self.sensitivity_label = QtGui.QLabel("sensitivity")
         self.filter_label = QtGui.QLabel("lowpass filter")
+        self.log_label = QtGui.QLabel("log to file")
         self.pitch_label = QtGui.QLabel("DCM pitch: {:.9f}".format(self.dcm_pitch_tserver.Position))
         # quit button
         qbtn = QtGui.QPushButton('Quit', self)
@@ -115,6 +115,9 @@ class QbpmMonitor(QtGui.QWidget):
         self.sslider.setSingleStep(1)
         self.fslider.setValue(self.qbpm.filter)
         self.fslider.valueChanged.connect(self._set_filter)
+        # log button
+        self.lbutton = QtGui.QRadioButton(self)
+        self.lbutton.setChecked(True)
 
         r, g, b, w = [255, 0, 0], [0, 255, 0], [0, 0, 255], [150, 150, 150]
         fill_color = pg.mkColor([0, 255, 0, 100])
@@ -185,6 +188,7 @@ class QbpmMonitor(QtGui.QWidget):
         layout.addWidget(self.freq_label, 4, 0)
         layout.addWidget(self.sensitivity_label, 5, 0)
         layout.addWidget(self.filter_label, 6, 0)
+        layout.addWidget(self.log_label, 7, 0)
         layout.addWidget(self.rbtn, 0, 1)   # button goes in lower-left
         layout.addWidget(self.fbtn, 1, 1)   # button goes in lower-left
         layout.addWidget(reset_btn, 2, 1)   # button goes in lower-left
@@ -192,6 +196,7 @@ class QbpmMonitor(QtGui.QWidget):
         layout.addWidget(self.ftext, 4, 1)   # text edit goes in middle-left
         layout.addWidget(self.sslider, 5, 1)
         layout.addWidget(self.fslider, 6, 1)
+        layout.addWidget(self.lbutton, 7, 1)
         layout.addWidget(self.pitch_label, 8, 0, 1, 2)   # button goes in lower-left
         layout.addWidget(qbtn, 9, 0, 1, 2)   # button goes in lower-left
         layout.addWidget(self.plot_main, 0, 2, 10, 1)
@@ -237,7 +242,7 @@ class QbpmMonitor(QtGui.QWidget):
             self.qbpm.read_qbpm()
             self._plot_update()
             self.pitch_label.setText("DCM pitch: {:.9f}".format(self.dcm_pitch_tserver.Position))
-            if self.log:
+            if self.lbutton.isChecked():
                 fname = 'qbpm_log.csv'
                 if not os.path.isfile(fname):
                     with open(fname, 'a') as f:
@@ -654,5 +659,5 @@ if __name__ == '__main__':
     # qbpm1 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.01', 2)
     qbpm2 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.02', 7)
     app = QtGui.QApplication(sys.argv)
-    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=True, log=True)
+    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=True)
     sys.exit(app.exec_())

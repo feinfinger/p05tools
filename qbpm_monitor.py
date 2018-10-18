@@ -50,7 +50,6 @@ class QbpmMonitor(QtGui.QWidget):
         self.feedback_file = '/tmp/qbpmfeedback.run'
         if os.path.isfile(self.feedback_file):
             os.remove(self.feedback_file)
-        self.sensitivity = 10
         self.cycle = 0
         self.feedback_triggered = False
         self.simulate_feedback = simulate_feedback
@@ -66,6 +65,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.ll_label = QtGui.QLabel("backlog (s)")
         self.freq_label = QtGui.QLabel("frequency")
         self.sensitivity_label = QtGui.QLabel("sensitivity")
+        self.filter_label = QtGui.QLabel("lowpass filter")
         self.pitch_label = QtGui.QLabel("DCM pitch: {:.9f}".format(self.dcm_pitch_tserver.Position))
         # quit button
         qbtn = QtGui.QPushButton('Quit', self)
@@ -98,18 +98,32 @@ class QbpmMonitor(QtGui.QWidget):
         # sensititvity slider
         self.sslider = QtGui.QSlider(self)
         self.sslider.setOrientation(QtCore.Qt.Horizontal)
-        self.sslider.setMinimum(0)
-        self.sslider.setMaximum(9)
+        self.sslider.setMinimum(1)
+        self.sslider.setMaximum(100)
         self.sslider.setTickPosition(QtGui.QSlider.TicksBothSides)
-        self.sslider.setTickInterval(1)
+        self.sslider.setTickInterval(10)
         self.sslider.setSingleStep(1)
+        self.sslider.setValue(self.qbpm.sensitivity)
         self.sslider.valueChanged.connect(self._set_sensitivity)
+        # filter slider
+        self.fslider = QtGui.QSlider(self)
+        self.fslider.setOrientation(QtCore.Qt.Horizontal)
+        self.fslider.setMinimum(1)
+        self.fslider.setMaximum(1000)
+        self.fslider.setTickPosition(QtGui.QSlider.TicksBothSides)
+        self.fslider.setTickInterval(100)
+        self.sslider.setSingleStep(1)
+        self.fslider.setValue(self.qbpm.filter)
+        self.fslider.valueChanged.connect(self._set_filter)
 
-        r, g, w = [255, 0, 0], [0, 255, 0], [150, 150, 150]
+        r, g, b, w = [255, 0, 0], [0, 255, 0], [0, 0, 255], [150, 150, 150]
+        fill_color = pg.mkColor([0, 255, 0, 100])
         self.curves = {}
         log_pen = pg.mkPen(w, width=1, style=QtCore.Qt.SolidLine)
         avg_pen = pg.mkPen(r, width=3, style=QtCore.Qt.SolidLine)
         target_pen = pg.mkPen(g, width=1, style=QtCore.Qt.SolidLine)
+        sensitivity_pen = pg.mkPen(fill_color, width=1, style=QtCore.Qt.SolidLine)
+        fill_pen = pg.mkPen(fill_color, width=100, style=QtCore.Qt.SolidLine)
         petra_pen = pg.mkPen(w, width=3, style=QtCore.Qt.SolidLine)
         # define plot font
         font = QtGui.QFont()
@@ -129,30 +143,37 @@ class QbpmMonitor(QtGui.QWidget):
         self.posy_timeaxis = TimeAxisItem(orientation='bottom')
         self.plot_posz = self.plot_main.addPlot(title='z-position', row=1, col=1,
                                                 axisItems={'bottom': self.posy_timeaxis})
-        # assign qbpm data tp styles to PlotWidgets
+        # assign qbpm data to styles and PlotWidgets
         styles = {'avgcurr_log': (self.plot_avgcurr, log_pen),
-                  'avgcurr_mvavg_log': (self.plot_avgcurr, avg_pen),
+                  'avgcurr_filter_log': (self.plot_avgcurr, avg_pen),
                   'avgcurr_target_log': (self.plot_avgcurr, target_pen),
                   'posx_log': (self.plot_posx, log_pen),
-                  'posx_mvavg_log': (self.plot_posx, avg_pen),
+                  'posx_filter_log': (self.plot_posx, avg_pen),
                   'posx_target_log': (self.plot_posx, target_pen),
                   'posz_log': (self.plot_posz, log_pen),
-                  'posz_mvavg_log': (self.plot_posz, avg_pen),
+                  'posz_filter_log': (self.plot_posz, avg_pen),
                   'posz_target_log': (self.plot_posz, target_pen),
+                  'posz_sens_low_log': (self.plot_posz, sensitivity_pen),
+                  'posz_sens_high_log': (self.plot_posz, sensitivity_pen),
                   'petracurrent_log': (self.plot_petracurrent, petra_pen)
                   }
         # plot curves
-        for key, style in styles.items():
+        for log_array, style in styles.items():
             # self.curves[key] = style[0].plot(self.qbpm.log_arrays[key], pen=style[1], symbol='o')
-            self.curves[key] = style[0].plot(self.qbpm.log_arrays[key], pen=style[1])
-            style[0].getAxis("bottom").tickFont = font
-            style[0].getAxis("bottom").setStyle(tickTextOffset=20)
-            style[0].getAxis("left").tickFont = font
-            style[0].getAxis("left").setStyle(tickTextOffset=20)
-            style[0].getAxis("left").setWidth(100)
-            style[0].getAxis("bottom").setGrid(100)
-            style[0].getAxis("left").setGrid(100)
-      
+            self.curves[log_array] = style[0].plot(self.qbpm.log_time, self.qbpm.log_arrays[log_array], pen=style[1])
+        # self.fill = pg.FillBetweenItem(curve1=self.curves['posz_sens_low_log'],
+        #                                curve2=self.curves['posz_sens_high_log'], pen=fill_pen)
+        # self.plot_posz.addItem(self.fill)
+        # set axis properties
+        for log_plot in [self.plot_avgcurr, self. plot_posx, self.plot_posz, self.plot_petracurrent]:
+            log_plot.getAxis("bottom").tickFont = font
+            log_plot.getAxis("bottom").setStyle(tickTextOffset=20)
+            log_plot.getAxis("left").tickFont = font
+            log_plot.getAxis("left").setStyle(tickTextOffset=20)
+            log_plot.getAxis("left").setWidth(100)
+            log_plot.getAxis("bottom").setGrid(100)
+            log_plot.getAxis("left").setGrid(100)
+
         # Create a grid layout to manage the widgets size and position
         layout = QtGui.QGridLayout()
         self.setLayout(layout)
@@ -163,12 +184,14 @@ class QbpmMonitor(QtGui.QWidget):
         layout.addWidget(self.ll_label, 3, 0)
         layout.addWidget(self.freq_label, 4, 0)
         layout.addWidget(self.sensitivity_label, 5, 0)
+        layout.addWidget(self.filter_label, 6, 0)
         layout.addWidget(self.rbtn, 0, 1)   # button goes in lower-left
         layout.addWidget(self.fbtn, 1, 1)   # button goes in lower-left
         layout.addWidget(reset_btn, 2, 1)   # button goes in lower-left
         layout.addWidget(self.lltext, 3, 1)   # text edit goes in middle-left
         layout.addWidget(self.ftext, 4, 1)   # text edit goes in middle-left
         layout.addWidget(self.sslider, 5, 1)
+        layout.addWidget(self.fslider, 6, 1)
         layout.addWidget(self.pitch_label, 8, 0, 1, 2)   # button goes in lower-left
         layout.addWidget(qbtn, 9, 0, 1, 2)   # button goes in lower-left
         layout.addWidget(self.plot_main, 0, 2, 10, 1)
@@ -183,12 +206,15 @@ class QbpmMonitor(QtGui.QWidget):
 
     def _plot_update(self):
         """
-        Updates plot window with current values from Qbom() class instance.
+        Updates plot window with current values from Qbpm() class instance.
         :return: None
         """
-        for key, names in self.qbpm.log_names.items():
-            for name in names:
-                self.curves[name].setData(self.qbpm.log_time, self.qbpm.log_arrays[name])
+        omit_log = ['sens_log']
+        for log_group, log_arrays in self.qbpm.log_names.items():
+            for log_array in log_arrays:
+                if log_array not in omit_log:
+                    self.curves[log_array].setData(self.qbpm.log_time, self.qbpm.log_arrays[log_array],clear=True)
+        # self.fill.setCurves(self.curves['posz_sens_low_log'], self.curves['posz_sens_high_log'])
 
     def toggle_polling(self):
         """
@@ -267,19 +293,14 @@ class QbpmMonitor(QtGui.QWidget):
         :return: None
         """
         while True:
-            interval = 20
+            interval = int(self.qbpm.filter / 20)
             if self.qbpm.log_arrays['avgcurr_log'][-1] < self.feedback_threshold:
                 print('intensity too low.')
                 self._stop_loop_feedback()
-            # calculate jitter based on last 10 log values
-            jitter = self.qbpm.log_arrays['posz_mvavg_log'][-int(numpy.floor(interval/2)):].std()
-            # jitter = self.qbpm.log_arrays['posx_mvavg_log'][-int(numpy.floor(interval/2)):].std()
-            bandwidth = self.sensitivity * jitter
-            current_pos = self.qbpm.log_arrays['posz_mvavg_log'][-1]
-            # current_pos = self.qbpm.log_arrays['posx_mvavg_log'][-1]
+            current_pos = self.qbpm.log_arrays['posz_filter_log'][-1]
             target = self.qbpm.posz_target
-            # target = self.qbpm.posx_target
             corr_factor = 0.2
+            bandwidth = 0.003 * float(self.qbpm.sensitivity/100)
             if not ((target - bandwidth) < current_pos < (target + bandwidth)):
                 corr_angle = -((current_pos - target) * corr_factor)/self.qbpm.distance
                 if self.cycle == interval:
@@ -291,7 +312,7 @@ class QbpmMonitor(QtGui.QWidget):
                         self.dcm_pitch_tserver.write_attribute('Position', dcm_target_pitchpos)
                         self.dcm_pitch_tserver.write_attribute('StepBacklash',self.dcm_step_backlash)
                     self.cycle = 0
-            self.cycle = 0 if self.cycle == interval else self.cycle + 1
+            self.cycle = 0 if self.cycle >= interval else self.cycle + 1
             yield
 
     def _start_loop_feedback(self):
@@ -332,7 +353,16 @@ class QbpmMonitor(QtGui.QWidget):
         :param value: <int> Connected to slider
         :return: None
         """
-        self.sensitivity = 10 - value
+        self.qbpm.sensitivity = value
+
+    def _set_filter(self, value):
+        """
+        Sets feedback sensitivity.
+
+        :param value: <float> Connected to slider
+        :return: None
+        """
+        self.qbpm.filter = value
 
     def timerEvent(self, event):
         """
@@ -419,7 +449,7 @@ class Qbpm:
         - QBPM average current
         - PETRA III ring current
         - target values of all logged values (used for monochromator feedback)
-        - rolling average of all logged values (used for monochromator feedback)
+        - low pass filter values for all logged values (used for monochromator feedback)
         - current time (to plot above values against)
 
     Each update rolls all arrays by one and adds the current value at the end of the array.
@@ -440,8 +470,9 @@ class Qbpm:
         self.backlog = 120  # backlog length in s
         self.log_length = self.calc_log_length(self.backlog, self.frequency)
         self.log_names = {'log_vals': ['posx_log', 'posz_log', 'avgcurr_log', 'petracurrent_log'],
-                          'log_mvavg': ['posx_mvavg_log', 'posz_mvavg_log', 'avgcurr_mvavg_log'],
+                          'log_filter': ['posx_filter_log', 'posz_filter_log', 'avgcurr_filter_log'],
                           'log_target': ['posx_target_log', 'posz_target_log', 'avgcurr_target_log'],
+                          'log_sens': ['sens_log', 'posz_sens_low_log', 'posz_sens_high_log']
                           }
         self.log_time = numpy.zeros(self.log_length)
         self.reset_logs()  # initialize log_arrays with appropriate log_length
@@ -450,6 +481,8 @@ class Qbpm:
         self.posz_target = 0  # target vertical position during feedback
         self.avgcurr_target = 0  # target average QBPM current during feedback
         self.feedback_on = False  # sets target logging behaviour
+        self.sensitivity = 10
+        self.filter = 500
 
     def read_qbpm(self):
         """
@@ -466,31 +499,48 @@ class Qbpm:
         try:
             bc = self.petra.BeamCurrent
         except tango.DevFailed:
-            bc = None
+            bc = numpy.nan
         try:
             pac = self.tserver.read_attribute('PosAndAvgCurr').value
         except tango.DevFailed:
-            pac = numpy.array([None, None, None])
+            pac = numpy.array([numpy.nan, numpy.nan, numpy.nan])
         server_query = numpy.append(pac, bc)
         for n, key in enumerate(self.log_names['log_vals']):
             self.log_arrays[key][-1] = server_query[n]
         # calculate moving average and append to log array
-        for n, key in enumerate(self.log_names['log_mvavg']):
-            mvavg = self.log_arrays[self.log_names['log_vals'][n]][-self.box_length:].mean()
-            self.log_arrays[key][-1] = mvavg
+        for n, key in enumerate(self.log_names['log_filter']):
+            a = 1*10**-(3*float(self.filter)/1000)
+            last_logval = self.log_arrays[self.log_names['log_vals'][n]][-1]
+            last_filterval = self.log_arrays[key][-2]
+            filter = last_logval * a + (1 - a) * last_filterval
+            self.log_arrays[key][-1] = filter
         targets = [self.posx_target,  self.posz_target, self.avgcurr_target]
+        # append current target position (depends on feedback)
         for n, key in enumerate(self.log_names['log_target']):
             if self.feedback_on:
                 self.log_arrays[key][-1] = targets[n]
             else:
-                last_mvg_avg = self.log_arrays[self.log_names['log_mvavg'][n]][-1]
+                last_mvg_avg = self.log_arrays[self.log_names['log_filter'][n]][-1]
                 self.log_arrays[key][-1] = last_mvg_avg
+        # append current sensitivity to log arrays
+        sensitivity = 0.003 * float(self.sensitivity/100)
+        low_sens = self.posz_target - sensitivity
+        high_sens = self.posz_target + sensitivity
+        sens_vals = numpy.array([sensitivity, low_sens, high_sens])
+        for n, key in enumerate(self.log_names['log_sens']):
+            if self.feedback_on:
+                self.log_arrays[key][-1] = sens_vals[n]
+            else:
+                self.log_arrays[key][-1] = numpy.nan
+
+        # reset target position if feedback is off
         if not self.feedback_on:
-            self.posx_target = self.log_arrays['posx_mvavg_log'][-1]
-            self.posz_target = self.log_arrays['posz_mvavg_log'][-1]
-            self.avgcurr_target = self.log_arrays['avgcurr_mvavg_log'][-1]
-        # finally append unix timestamp to log_time
+            self.posx_target = self.log_arrays['posx_filter_log'][-1]
+            self.posz_target = self.log_arrays['posz_filter_log'][-1]
+            self.avgcurr_target = self.log_arrays['avgcurr_filter_log'][-1]
+        # append unix timestamp to log_time
         self.log_time[-1] = self.timestamp()
+        # append sens_log value
 
     def change_log_length(self, log_length):
         """
@@ -500,22 +550,22 @@ class Qbpm:
         """
         len_diff = abs(self.log_length - log_length)
         if log_length > self.log_length:
-            for key, names in self.log_names.items():
-                for name in names:
-                    tmparr = numpy.full(log_length, self.log_arrays[name][0])  # generate tmparr with first value from array
-                    tmparr[-self.log_arrays[name].size:] = self.log_arrays[name]  # fill end with current array
-                    self.log_arrays[name] = tmparr
+            for log_group in self.log_names.values():
+                for log_array in log_group:
+                    tmparr = numpy.full(log_length, self.log_arrays[log_array][0])  # generate tmparr with first value from array
+                    tmparr[-self.log_arrays[log_array].size:] = self.log_arrays[log_array]  # fill end with current array
+                    self.log_arrays[log_array] = tmparr
             tmparr = numpy.zeros(log_length)
             tmparr[:len_diff] = numpy.linspace(self.log_time[0] - len_diff/self.frequency,
                                                        self.log_time[0], len_diff)
             tmparr[-self.log_time.size:] = self.log_time
             self.log_time = tmparr
         else:
-            for key, names in self.log_names.items():
-                for name in names:
+            for log_group in self.log_names.values():
+                for log_array in log_group:
                     tmparr = numpy.zeros(log_length)
-                    tmparr[:] = self.log_arrays[name][-log_length:]
-                    self.log_arrays[name] = tmparr
+                    tmparr[:] = self.log_arrays[log_array][-log_length:]
+                    self.log_arrays[log_array] = tmparr
             tmparr = numpy.zeros(log_length)
             tmparr[:] = self.log_time[-log_length:]
             self.log_time = tmparr
@@ -558,16 +608,25 @@ class Qbpm:
         Sets all log arrays to a current value.
         :return:  None
         """
-        bc = self.petra.BeamCurrent
-        pac = self.tserver.read_attribute('PosAndAvgCurr').value
+        # reset log arrays
+        try:
+            bc = self.petra.BeamCurrent
+        except:
+            bc = numpy.nan
+        try:
+            pac = self.tserver.read_attribute('PosAndAvgCurr').value
+        except:
+            pac = numpy.array([numpy.nan, numpy.nan, numpy.nan])
         server_query = numpy.append(pac, bc)
-        set_vals = {}
-        for key, names in self.log_names.items():
-            for n, name in enumerate(names):
-                set_vals[name] = server_query[n]
-        for key, names in self.log_names.items():
-            for name in names:
-                self.log_arrays[name] = numpy.full(self.log_length, set_vals[name])
+        for log_group, log_arrays in self.log_names.items():
+            omit_group = ['log_sens']
+            if log_group not in omit_group:
+                for n, log_array in enumerate(log_arrays):
+                    self.log_arrays[log_array] = numpy.full(self.log_length, server_query[n])
+        # reset sensitivity log
+        for log_array in self.log_names['log_sens']:
+            self.log_arrays[log_array] = numpy.full(self.log_length, numpy.nan)
+        # reset time array
         length = self.log_time.size
         t0 = self.timestamp() - self.backlog
         t1 = self.timestamp()
@@ -595,5 +654,5 @@ if __name__ == '__main__':
     # qbpm1 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.01', 2)
     qbpm2 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.02', 7)
     app = QtGui.QApplication(sys.argv)
-    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=True, log=False)
+    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=True, log=True)
     sys.exit(app.exec_())

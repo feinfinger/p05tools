@@ -286,9 +286,11 @@ class QbpmMonitor(QtGui.QWidget):
         """
         self.feedback = not self.feedback
         if self.feedback:
+            self.dcm_pitch_tserver.write_attribute('StepBacklash',0)
             self._start_loop_feedback()
         else:
             # print('In toggle feedback')
+            self.dcm_pitch_tserver.write_attribute('StepBacklash',self.dcm_step_backlash)
             self._stop_loop_feedback()
 
     def _set_feedback_loop(self):
@@ -302,8 +304,10 @@ class QbpmMonitor(QtGui.QWidget):
             if self.qbpm.log_arrays['avgcurr_log'][-1] < self.feedback_threshold:
                 print('intensity too low.')
                 self._stop_loop_feedback()
-            current_pos = self.qbpm.log_arrays['posz_filter_log'][-1]
-            target = self.qbpm.posz_target
+#            current_pos = self.qbpm.log_arrays['posz_filter_log'][-1]
+            current_pos = self.qbpm.log_arrays['posx_filter_log'][-1]
+#            target = self.qbpm.posz_target
+            target = self.qbpm.posx_target
             corr_factor = 0.2
             bandwidth = 0.003 * float(self.qbpm.sensitivity/100)
             if not ((target - bandwidth) < current_pos < (target + bandwidth)):
@@ -313,9 +317,7 @@ class QbpmMonitor(QtGui.QWidget):
                     dcm_curr_pitchpos = self.dcm_pitch_tserver.Position
                     dcm_target_pitchpos = dcm_curr_pitchpos + corr_angle
                     if not self.simulate_feedback:
-                        self.dcm_pitch_tserver.write_attribute('StepBacklash',0)
                         self.dcm_pitch_tserver.write_attribute('Position', dcm_target_pitchpos)
-                        self.dcm_pitch_tserver.write_attribute('StepBacklash',self.dcm_step_backlash)
                     self.cycle = 0
             self.cycle = 0 if self.cycle >= interval else self.cycle + 1
             yield
@@ -379,7 +381,7 @@ class QbpmMonitor(QtGui.QWidget):
         if self._check_pulse():
             if self._generator_poll is None:
                 if self._generator_feedback is not None:
-                    # print('In timerEvent 2')
+                    print('In timerEvent 2')
                     self._stop_loop_feedback()
                 return
             try:
@@ -659,5 +661,5 @@ if __name__ == '__main__':
     # qbpm1 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.01', 2)
     qbpm2 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.02', 7)
     app = QtGui.QApplication(sys.argv)
-    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=True)
+    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=False)
     sys.exit(app.exec_())

@@ -241,19 +241,21 @@ class QbpmMonitor(QtGui.QWidget):
         while True:
             self.qbpm.read_qbpm()
             self._plot_update()
-            self.pitch_label.setText("DCM pitch: {:.9f}".format(self.dcm_pitch_tserver.Position))
+            pitch_position = self.dcm_pitch_tserver.Position
+            self.pitch_label.setText("DCM pitch: {:.9f}".format(pitch_position))
             if self.lbutton.isChecked():
                 fname = 'qbpm_log.csv'
                 if not os.path.isfile(fname):
                     with open(fname, 'a') as f:
-                        f.write('timestamp qbpm_avgcurr qbpm_x qbpm_z petra_curr\n')
+                        f.write('timestamp qbpm_avgcurr qbpm_x qbpm_z pitch_position petra_curr\n')
                 with open(fname, 'a') as f:
                     t = self.qbpm.log_time[-1]
                     a = self.qbpm.log_arrays['avgcurr_log'][-1]
                     x = self.qbpm.log_arrays['posx_log'][-1]
                     z = self.qbpm.log_arrays['posz_log'][-1]
+                    pp = pitch_position
                     p = self.qbpm.log_arrays['petracurrent_log'][-1]
-                    l = '{} {} {} {} {}\n'.format(t, a, x ,z , p)
+                    l = '{} {} {} {} {}\n'.format(t, a, x ,z , pp, p)
                     f.write(l)
             yield
 
@@ -660,6 +662,7 @@ class TimeAxisItem(pg.AxisItem):
 if __name__ == '__main__':
     # qbpm1 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.01', 2)
     qbpm2 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.02', 7)
+    # qbpmeh2 = Qbpm('hzgpp05vme2:10000/p05/i404/eh2.01', 30)
     app = QtGui.QApplication(sys.argv)
     qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=False)
     sys.exit(app.exec_())

@@ -23,13 +23,20 @@ class QbpmMonitor(QtGui.QWidget):
     Additionally it is possible to let this monitor regulate the vertical beam position in a feedback
     loop.
     """
-    def __init__(self, qbpm_instance, simulate_feedback=False):
+    def __init__(self, simulate_feedback=False):
         """
         Set up GUI and initialize class variables.
         :param qbpm_instance: Qbpm() class instance
         """
         super(QbpmMonitor, self).__init__()
-        self.qbpm = qbpm_instance
+
+        self.sources = {
+            "QBPM1 OH" : Qbpm('hzgpp05vme0:10000/p05/i404/exp.01', 2),
+            "QBPM2 OH" : Qbpm('hzgpp05vme0:10000/p05/i404/exp.02', 7),
+            "QBPM EH2" : Qbpm('hzgpp05vme2:10000/p05/i404/eh2.01', 30)
+            }
+        default_source = "QBPM2 OH"
+        self.set_source(default_source)
         self.title = self.qbpm.address
         self.posx_target = 0
         self.posz_target = 0
@@ -43,9 +50,18 @@ class QbpmMonitor(QtGui.QWidget):
         self.feedback_threshold = 5E-9
         self._generator_feedback = None
         self._timerId_feedback = None
+        self.last_corr_angle = 0
+        self.feedback_time = datetime.datetime.now()
+        self.dmm_x1z_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x1z')
+        self.dmm_x1z_position = self.dmm_x1z_tserver.Position
         self.dcm_bragg_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_bragg')
         self.dcm_bragg_angle = self.dcm_bragg_tserver.Position
         self.dcm_pitch_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_xtal2_pitch')
+        self.dmm_bragg_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x1rot')
+        self.dmm_bragg_angle = self.dcm_bragg_tserver.Position
+        self.dmm_x2rot_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x2rot')
+        self.get_mono()
+
         self.heartbeat = time.time()
         self.feedback_file = '/tmp/qbpmfeedback.run'
         if os.path.isfile(self.feedback_file):
@@ -59,6 +75,7 @@ class QbpmMonitor(QtGui.QWidget):
         # initUI
 
         # labels
+        self.source_label = QtGui.QLabel("source")
         self.poll_label = QtGui.QLabel("poll")
         self.feedback_label = QtGui.QLabel("feedback")
         self.ll_label = QtGui.QLabel("backlog (s)")
@@ -66,25 +83,28 @@ class QbpmMonitor(QtGui.QWidget):
         self.sensitivity_label = QtGui.QLabel("sensitivity")
         self.filter_label = QtGui.QLabel("lowpass filter")
         self.log_label = QtGui.QLabel("log to file")
-        self.pitch_label = QtGui.QLabel("DCM pitch: {:.9f}".format(self.dcm_pitch_tserver.Position))
-        # quit button
-        qbtn = QtGui.QPushButton('Quit', self)
-        qbtn.clicked.connect(QtCore.QCoreApplication.instance().quit)
-        # reset button
-        qbtn.resize(qbtn.sizeHint())
-        reset_btn = QtGui.QPushButton('Reset', self)
-        reset_btn.clicked.connect(self.qbpm.reset_logs)
-        reset_btn.resize(qbtn.sizeHint())
+        self.set_x2pitchlabel()
+        # QBOM source Combobox
+        self.scbox = QtGui.QComboBox(self)
+        self.scbox.addItem("QBPM1 OH")  # Index 0
+        self.scbox.addItem("QBPM2 OH")  # Index 1
+        self.scbox.addItem("QBPM EH2")  # index 2
+        self.scbox.setCurrentIndex(1)  # Check if this value is consistent with default source above!
+        self.scbox.activated[str].connect(self.set_source)
         # poll button
         self.rbtn = QtGui.QPushButton(self)
         self.rbtn.clicked.connect(self.toggle_polling)
-        self.rbtn.resize(qbtn.sizeHint())
+        self.rbtn.resize(self.rbtn.sizeHint())
         self.rbtn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
         # feedback button
         self.fbtn = QtGui.QPushButton(self)
         self.fbtn.clicked.connect(self.toggle_feedback)
-        self.fbtn.resize(qbtn.sizeHint())
+        self.fbtn.resize(self.fbtn.sizeHint())
         self.fbtn.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
+        # reset button
+        reset_btn = QtGui.QPushButton('Reset', self)
+        reset_btn.clicked.connect(self.qbpm.reset_logs)
+        reset_btn.resize(reset_btn.sizeHint())
         # backlog text field
         self.lltext = QtGui.QLineEdit(str(self.qbpm.backlog))
         self.lltext.setValidator(QtGui.QIntValidator())
@@ -117,8 +137,12 @@ class QbpmMonitor(QtGui.QWidget):
         self.fslider.valueChanged.connect(self._set_filter)
         # log button
         self.lbutton = QtGui.QRadioButton(self)
-        self.lbutton.setChecked(True)
-
+        self.lbutton.setChecked(False)
+        # quit button
+        qbtn = QtGui.QPushButton('Quit', self)
+        qbtn.clicked.connect(QtCore.QCoreApplication.instance().quit)
+        qbtn.resize(qbtn.sizeHint())
+        
         r, g, b, w = [255, 0, 0], [0, 255, 0], [0, 0, 255], [150, 150, 150]
         fill_color = pg.mkColor([0, 255, 0, 100])
         self.curves = {}
@@ -182,24 +206,28 @@ class QbpmMonitor(QtGui.QWidget):
         self.setLayout(layout)
 
         # Add widgets to the layout in their proper positions
-        layout.addWidget(self.poll_label, 0, 0)
-        layout.addWidget(self.feedback_label, 1, 0)
-        layout.addWidget(self.ll_label, 3, 0)
-        layout.addWidget(self.freq_label, 4, 0)
-        layout.addWidget(self.sensitivity_label, 5, 0)
-        layout.addWidget(self.filter_label, 6, 0)
-        layout.addWidget(self.log_label, 7, 0)
-        layout.addWidget(self.rbtn, 0, 1)   # button goes in lower-left
-        layout.addWidget(self.fbtn, 1, 1)   # button goes in lower-left
-        layout.addWidget(reset_btn, 2, 1)   # button goes in lower-left
-        layout.addWidget(self.lltext, 3, 1)   # text edit goes in middle-left
-        layout.addWidget(self.ftext, 4, 1)   # text edit goes in middle-left
-        layout.addWidget(self.sslider, 5, 1)
-        layout.addWidget(self.fslider, 6, 1)
-        layout.addWidget(self.lbutton, 7, 1)
-        layout.addWidget(self.pitch_label, 8, 0, 1, 2)   # button goes in lower-left
-        layout.addWidget(qbtn, 9, 0, 1, 2)   # button goes in lower-left
-        layout.addWidget(self.plot_main, 0, 2, 10, 1)
+        layout.addWidget(self.source_label, 0, 0)
+        layout.addWidget(self.poll_label, 1, 0)
+        layout.addWidget(self.feedback_label, 2, 0)
+        layout.addWidget(self.ll_label, 4, 0)
+        layout.addWidget(self.freq_label, 5, 0)
+        layout.addWidget(self.sensitivity_label, 6, 0)
+        layout.addWidget(self.filter_label, 7, 0)
+        layout.addWidget(self.log_label, 8, 0)
+        layout.addWidget(self.scbox, 0, 1)
+        layout.addWidget(self.rbtn, 1, 1)   # button goes in lower-left
+        layout.addWidget(self.fbtn, 2, 1)   # button goes in lower-left
+        layout.addWidget(reset_btn, 3, 1)   # button goes in lower-left
+        layout.addWidget(self.lltext, 4, 1)   # text edit goes in middle-left
+        layout.addWidget(self.ftext, 5, 1)   # text edit goes in middle-left
+        layout.addWidget(self.sslider, 6, 1)
+        layout.addWidget(self.fslider, 7, 1)
+        layout.addWidget(self.lbutton, 8, 1)
+        layout.addWidget(self.pitch_label, 9, 0, 1, 2)   # button goes in lower-left
+#        layout.addWidget(self.fb_step_label, 10, 0, 1, 2)
+#        layout.addWidget(self.fb_time_label, 11, 0, 1, 2)
+        layout.addWidget(qbtn, 10, 0, 1, 2)   # button goes in lower-left
+        layout.addWidget(self.plot_main, 0, 2, 11, 1)
 
         layout.setColumnStretch(0, 0.1)
         layout.setColumnStretch(1, 0.1)
@@ -242,7 +270,7 @@ class QbpmMonitor(QtGui.QWidget):
             self.qbpm.read_qbpm()
             self._plot_update()
             pitch_position = self.dcm_pitch_tserver.Position
-            self.pitch_label.setText("DCM pitch: {:.9f}".format(pitch_position))
+            self.set_x2pitchlabel()
             if self.lbutton.isChecked():
                 fname = 'qbpm_log.csv'
                 if not os.path.isfile(fname):
@@ -302,6 +330,7 @@ class QbpmMonitor(QtGui.QWidget):
         :return: None
         """
         while True:
+            mono = self.get_mono()
             interval = int(self.qbpm.filter / 20)
             if self.qbpm.log_arrays['avgcurr_log'][-1] < self.feedback_threshold:
                 print('intensity too low.')
@@ -310,16 +339,24 @@ class QbpmMonitor(QtGui.QWidget):
             current_pos = self.qbpm.log_arrays['posx_filter_log'][-1]
 #            target = self.qbpm.posz_target
             target = self.qbpm.posx_target
-            corr_factor = 0.2
+            if mono == "dcm":
+                corr_factor = 0.2
+            if mono == "dmm":
+                corr_factor = 0.2
             bandwidth = 0.003 * float(self.qbpm.sensitivity/100)
             if not ((target - bandwidth) < current_pos < (target + bandwidth)):
                 corr_angle = -((current_pos - target) * corr_factor)/self.qbpm.distance
                 if self.cycle == interval:
                     print('Moving pitch: {}'.format(corr_angle))
-                    dcm_curr_pitchpos = self.dcm_pitch_tserver.Position
-                    dcm_target_pitchpos = dcm_curr_pitchpos + corr_angle
+                    curr_pitchpos = self.dcm_pitch_tserver.Position
+                    target_pitchpos = dcm_curr_pitchpos + corr_angle
                     if not self.simulate_feedback:
-                        self.dcm_pitch_tserver.write_attribute('Position', dcm_target_pitchpos)
+                        if mono == "dcm":
+                            self.dcm_pitch_tserver.write_attribute('Position', target_pitchpos)
+                        if mono == "dmm":
+                            self.dmm_x2rot_tserver.write_attribute('Position', target_pitchpos)
+                        self.last_corr_angle = corr_angle
+                        self.feedback_time = datetime.datetime.now()
                     self.cycle = 0
             self.cycle = 0 if self.cycle >= interval else self.cycle + 1
             yield
@@ -342,6 +379,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.qbpm.posz_target = self.posz_target
         self.qbpm.avgcurr_target = self.avgcurr_target
         self.dcm_bragg_angle = self.dcm_bragg_tserver.Position
+        self.dmm_x1z_position = self.dmm_x1z_tserver.Position
 
     def _stop_loop_feedback(self):  # Connect to Stop-button clicked()
         """
@@ -400,6 +438,14 @@ class QbpmMonitor(QtGui.QWidget):
                 self._stop_loop_feedback()  # Iteration has finished, kill the timer
                 self._stop_loop_poll()  # Iteration has finished, kill the timer
 
+    def set_source(self, source):
+        """
+        Sets the QBPM source
+        """
+        self.qbpm = self.sources[source]
+        self.title = self.qbpm.address
+        self.setWindowTitle(self.title)
+
     def ext_fb_trigger(self):
         """
         Checks if feedback trigger file exists. If the file exists, feedback will be toggled and the file
@@ -448,6 +494,26 @@ class QbpmMonitor(QtGui.QWidget):
             frequency = 6.0
         self.qbpm.change_frequency(frequency)
         self.ftext.setText(str(self.qbpm.frequency))
+
+    def set_x2pitchlabel(self):
+        """
+        Changes the pitch label according to the used monochromator
+        """
+        labelstr_dcm = "DCM pitch: {:.9f}\nfb stepsize: {:.9f}\n{}"
+        labelstr_dmm = "DMM pitch: {:.9f}\nfb stepsize: {:.9f}\n{}"
+        if self.get_mono() == "dcm":
+            self.pitch_label = QtGui.QLabel(labelstr_dcm.format(self.dcm_pitch_tserver.Position, self.last_corr_angle, self.feedback_time))
+        else:
+            self.pitch_label = QtGui.QLabel(labelstr_dmm.format(self.dmm_x2rot_tserver.Position, self.last_corr_angle, self.feedback_time))
+
+    def get_mono(self):
+        """
+        Checks which monochromator is active by reading the DMM x1 z position. DMM_X1Z below -5 means DCM is active. 
+        """
+        if self.dmm_x1z_position < -5:
+            return "dcm"
+        else:
+            return "dmm"
 
 
 class Qbpm:
@@ -660,9 +726,6 @@ class TimeAxisItem(pg.AxisItem):
 
 
 if __name__ == '__main__':
-    # qbpm1 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.01', 2)
-    qbpm2 = Qbpm('hzgpp05vme0:10000/p05/i404/exp.02', 7)
-    # qbpmeh2 = Qbpm('hzgpp05vme2:10000/p05/i404/eh2.01', 30)
     app = QtGui.QApplication(sys.argv)
-    qbpm_mon = QbpmMonitor(qbpm2, simulate_feedback=False)
+    qbpm_mon = QbpmMonitor(simulate_feedback=True)
     sys.exit(app.exec_())

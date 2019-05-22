@@ -348,7 +348,7 @@ class QbpmMonitor(QtGui.QWidget):
                 corr_angle = -((current_pos - target) * corr_factor)/self.qbpm.distance
                 if self.cycle == interval:
                     print('Moving pitch: {}'.format(corr_angle))
-                    curr_pitchpos = self.dcm_pitch_tserver.Position
+                    dcm_curr_pitchpos = self.dcm_pitch_tserver.Position
                     target_pitchpos = dcm_curr_pitchpos + corr_angle
                     if not self.simulate_feedback:
                         if mono == "dcm":
@@ -727,5 +727,5 @@ class TimeAxisItem(pg.AxisItem):
 
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
-    qbpm_mon = QbpmMonitor(simulate_feedback=True)
+    qbpm_mon = QbpmMonitor(simulate_feedback=False)
     sys.exit(app.exec_())

@@ -8,6 +8,7 @@ Created on Tue Sep 11 12:35:30 2018
 
 import sys
 from PyQt5 import QtGui, QtCore, QtWidgets
+
 import pyqtgraph as pg
 import tango
 import numpy
@@ -52,14 +53,17 @@ class QbpmMonitor(QtGui.QWidget):
         self._timerId_feedback = None
         self.last_corr_angle = 0
         self.feedback_time = datetime.datetime.now()
-        self.dmm_x1z_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x1z')
-        self.dmm_x1z_position = self.dmm_x1z_tserver.Position
         self.dcm_bragg_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_bragg')
         self.dcm_bragg_angle = self.dcm_bragg_tserver.Position
         self.dcm_pitch_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_xtal2_pitch')
-        self.dmm_bragg_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x1rot')
+        self.dcm_energy_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dcm_energy')
+        self.dmm_x1rot_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x1rot')
         self.dmm_bragg_angle = self.dcm_bragg_tserver.Position
         self.dmm_x2rot_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x2rot')
+        self.dmm_x1z_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x1z')
+        self.dmm_x1z_position = self.dmm_x1z_tserver.Position
+        self.dmm_x2z_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x2z')
+        self.dmm_x2y_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x2y')   
         self.get_mono()
 
         self.heartbeat = time.time()
@@ -83,6 +87,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.sensitivity_label = QtGui.QLabel("sensitivity")
         self.filter_label = QtGui.QLabel("lowpass filter")
         self.log_label = QtGui.QLabel("log to file")
+        self.pitch_label = QtGui.QLabel("0")
         self.set_x2pitchlabel()
         # QBOM source Combobox
         self.scbox = QtGui.QComboBox(self)
@@ -249,6 +254,7 @@ class QbpmMonitor(QtGui.QWidget):
                     self.curves[log_array].setData(self.qbpm.log_time, self.qbpm.log_arrays[log_array],clear=True)
         # self.fill.setCurves(self.curves['posz_sens_low_log'], self.curves['posz_sens_high_log'])
 
+
     def toggle_polling(self):
         """
         Toggles polling on or off. Connected to Poll button.
@@ -359,6 +365,7 @@ class QbpmMonitor(QtGui.QWidget):
                         self.feedback_time = datetime.datetime.now()
                     self.cycle = 0
             self.cycle = 0 if self.cycle >= interval else self.cycle + 1
+            self.set_x2pitchlabel()
             yield
 
     def _start_loop_feedback(self):
@@ -499,18 +506,19 @@ class QbpmMonitor(QtGui.QWidget):
         """
         Changes the pitch label according to the used monochromator
         """
-        labelstr_dcm = "DCM pitch: {:.9f}\nfb stepsize: {:.9f}\n{}"
-        labelstr_dmm = "DMM pitch: {:.9f}\nfb stepsize: {:.9f}\n{}"
-        if self.get_mono() == "dcm":
-            self.pitch_label = QtGui.QLabel(labelstr_dcm.format(self.dcm_pitch_tserver.Position, self.last_corr_angle, self.feedback_time))
-        else:
-            self.pitch_label = QtGui.QLabel(labelstr_dmm.format(self.dmm_x2rot_tserver.Position, self.last_corr_angle, self.feedback_time))
+        labelstr_dcm = "DCM\nenergy:\t\t{:.9f}\nexit offset:\t{:.9f}\npitch:\t\t{:.9f}\nfb stepsize:\t{:.9f}\n\n{}"
+        labelstr_dmm = "DMM\nbragg:\t\t{:.9f}\npitch:\t\t{:.9f}\nx1z:\t\t{:.9f}\nx2z:\t\t{:.9f}\nx2y:\t\t{:.9f}\nfb stepsize:\t{:.9f}\n\n{}"
+        mono = self.get_mono()
+        if mono == "dcm":
+            self.pitch_label.setText(labelstr_dcm.format(self.dcm_energy_tserver.Position, self.dcm_energy_tserver.ExitOffset, self.dcm_pitch_tserver.Position, self.last_corr_angle, self.feedback_time))
+        if mono == "dmm":
+            self.pitch_label.setText(labelstr_dmm.format(self.dmm_x1rot_tserver.Position, self.dmm_x2rot_tserver.Position, self.dmm_x1z_tserver.Position, self.dmm_x2z_tserver.Position, self.dmm_x2y_tserver.Position, self.last_corr_angle, self.feedback_time))
 
     def get_mono(self):
         """
         Checks which monochromator is active by reading the DMM x1 z position. DMM_X1Z below -5 means DCM is active. 
         """
-        if self.dmm_x1z_position < -5:
+        if self.dmm_x1z_tserver.Position < -5:
             return "dcm"
         else:
             return "dmm"

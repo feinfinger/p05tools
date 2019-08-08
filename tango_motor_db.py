@@ -41,7 +41,7 @@ class TangoMotorDb():
             (e.g. 'hzgpp05vme0:10000')
         """
         self._tango_host = tango_host
-        self._motor_db_filepath = '/home/fwilde/desycloud/dev/python/p05tools/p05_motor_db.h5'
+        self._motor_db_filepath = '/home/fwilde/dev_git/p05tools/p05_motor_db.h5'
         self._motor_cache = {'zmx': {'AxisName': None,
                                      'PreferentialDirection': None,
                                      'RunCurrent': None,
@@ -209,7 +209,7 @@ class TangoMotorDb():
 
         if update:
             if verbose:
-                print('Updating cache and database:')
+                print('Updating cache and database.')
             self._motor_cache['loc']['zmx_slot'] = zmx_slot
             self._motor_cache['loc']['zmx_device_name'] = tango_proxies['zmx']['device_name']
             self._motor_cache['loc']['oms_device_name'] = tango_proxies['oms']['device_name']
@@ -284,6 +284,19 @@ class TangoMotorDb():
                                 h5db_file[path].attrs.create('last edit', str(datetime.now()), dtype="S19")
             h5db_file.close()
 
+    def delete_motor_from_database(self, motorgroup, motorname):
+        """
+        Deletes a motor database entry. Only one motor can be deleted at a time. 
+        The correct motorgroup and motorname must be supplied.
+
+        param motorgroup <str>
+            Exact motorgroup name of the motor which is to be deleted,
+        param: motorname <str>
+            Exact name of the motor ro delete from database
+        """
+        with h5py.File(self._motor_db_filepath, 'a') as h5db_file:
+            del h5db_file[motorgroup][motorname]
+
     def _retrieve_database_entries(self, *args, inclusive=False):
         """
         Fetches a list of entries in database based on search terms.
@@ -345,7 +358,7 @@ class TangoMotorDb():
                 return
             print('=' * 79)
             print('Ambiguous or search term(s): {}'.format(search))
-            print('Based on the search term, the foloowing motor could be found:\n')
+            print('Based on the search term, the following motor could be found:\n')
             for item in db_entries:
                 print('{:<10} {}'.format(item[0], item[1]))
             print('=' * 79)

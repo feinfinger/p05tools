@@ -64,6 +64,7 @@ class QbpmMonitor(QtGui.QWidget):
         self.dmm_x1z_position = self.dmm_x1z_tserver.Position
         self.dmm_x2z_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x2z')
         self.dmm_x2y_tserver = tango.DeviceProxy('hzgpp05vme0:10000/dmm_x2y')   
+        self.beamstop = tango.DeviceProxy('hzgpp05vme0:10000/HASYLAB/Petra3_P05vil.CDI.SRV/BST')
         self.get_mono()
 
         self.heartbeat = time.time()
@@ -506,13 +507,13 @@ class QbpmMonitor(QtGui.QWidget):
         """
         Changes the pitch label according to the used monochromator
         """
-        labelstr_dcm = "DCM\nenergy:\t\t{:.9f}\nexit offset:\t{:.9f}\npitch:\t\t{:.9f}\nfb stepsize:\t{:.9f}\n\n{}"
-        labelstr_dmm = "DMM\nbragg:\t\t{:.9f}\npitch:\t\t{:.9f}\nx1z:\t\t{:.9f}\nx2z:\t\t{:.9f}\nx2y:\t\t{:.9f}\nfb stepsize:\t{:.9f}\n\n{}"
+        labelstr_dcm = "DCM\nenergy:\t\t{:.9f}\nexit offset:\t{:.9f}\npitch:\t\t{:.9f}\nfb stepsize:\t{:.9f}\n\nbeamstop:\t\t{:.1f}°\n\n{}"
+        labelstr_dmm = "DMM\nbragg:\t\t{:.9f}\npitch:\t\t{:.9f}\nx1z:\t\t{:.9f}\nx2z:\t\t{:.9f}\nx2y:\t\t{:.9f}\nfb stepsize:\t{:.9f}\n\nbeamstop:\t\t{:.1f}°\n\n{}"
         mono = self.get_mono()
         if mono == "dcm":
-            self.pitch_label.setText(labelstr_dcm.format(self.dcm_energy_tserver.Position, self.dcm_energy_tserver.ExitOffset, self.dcm_pitch_tserver.Position, self.last_corr_angle, self.feedback_time))
+            self.pitch_label.setText(labelstr_dcm.format(self.dcm_energy_tserver.Position, self.dcm_energy_tserver.ExitOffset, self.dcm_pitch_tserver.Position, self.last_corr_angle, self.beamstop.TEMP_OUT[0], self.feedback_time))
         if mono == "dmm":
-            self.pitch_label.setText(labelstr_dmm.format(self.dmm_x1rot_tserver.Position, self.dmm_x2rot_tserver.Position, self.dmm_x1z_tserver.Position, self.dmm_x2z_tserver.Position, self.dmm_x2y_tserver.Position, self.last_corr_angle, self.feedback_time))
+            self.pitch_label.setText(labelstr_dmm.format(self.dmm_x1rot_tserver.Position, self.dmm_x2rot_tserver.Position, self.dmm_x1z_tserver.Position, self.dmm_x2z_tserver.Position, self.dmm_x2y_tserver.Position, self.last_corr_angle, self.beamstop.TEMP_OUT[0], self.feedback_time))
 
     def get_mono(self):
         """

@@ -41,7 +41,7 @@ class TangoMotorDb():
             (e.g. 'hzgpp05vme0:10000')
         """
         self._tango_host = tango_host
-        self._motor_db_filepath = '/home/fwilde/dev_git/p05tools/p05_motor_db.h5'
+        self._motor_db_filepath = '/home/p05user/fwilde/p05tools/p05_motor_db.h5'
         self._motor_cache = {'zmx': {'AxisName': None,
                                      'PreferentialDirection': None,
                                      'RunCurrent': None,
@@ -51,7 +51,7 @@ class TangoMotorDb():
                                      'BaseRate': None,
                                      'Conversion': None,
                                      'SettleTime': None,
-                                     'SlewRate': None,
+TM                                     'SlewRate': None,
                                      'StepBacklash': None,
                                      'UnitLimitMax': None,
                                      'UnitLimitMin': None},
@@ -123,7 +123,7 @@ class TangoMotorDb():
     def query_server(self, zmx_slot, verbose=True):
         """
         Reads motor attributes fom tango server based on the ZMX slot and
-        stroes the values in an internal cache.
+        stores the values in an internal cache.
         Motorgroup and motorname should be chosen with care since they can
         be stored in the database (e.g. 'dmm' and 'x1rot').
 
